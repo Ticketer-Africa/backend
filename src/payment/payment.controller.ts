@@ -1,8 +1,9 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import { Body, Controller, HttpCode, Post, Get } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 
-@Controller('payment')
+@Controller('v1/payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
@@ -10,8 +11,7 @@ export class PaymentController {
   @HttpCode(200)
   @ApiOperation({
     summary: 'Webhook for transaction verification',
-    description:
-      'Endpoint to verify transactions after receiving payment webhook.',
+    description: 'Endpoint to verify transactions after receiving payment webhook.',
   })
   @ApiBody({
     description: 'Payment processor sends reference to confirm transaction',
@@ -43,5 +43,20 @@ export class PaymentController {
   })
   verifyWebhook(@Body('reference') reference: string) {
     return this.paymentService.verifyTransaction(reference);
+  }
+
+  // New endpoint to fetch bank codes
+  @Get('banks')
+  @ApiOperation({ summary: 'Get bank codes', description: 'Fetch list of bank codes from the payment gateway' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of banks fetched successfully',
+    schema: {
+      type: 'array',
+      items: { type: 'object' },
+    },
+  })
+  fetchBankCodes() {
+    return this.paymentService.fetchBankCodes();
   }
 }

@@ -506,6 +506,23 @@ export class PaymentService {
     return response ?? null;
   }
 
+  //Fetch bank codes
+  async fetchBankCodes() {
+  try {
+    const response = await this.httpService.axiosRef.get(
+      process.env.BANK_CODES_URL!,
+    );
+    return response.data;
+  } catch (error) {
+    this.logger.error(
+      `❌ Failed to fetch bank codes: ${error.message}`,
+      error.stack,
+    );
+    throw new InternalServerErrorException('Failed to fetch bank codes');
+  }
+}
+
+
   // Transaction Verification
   async verifyTransaction(reference: string) {
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
