@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/require-await */
 import {
   BadRequestException,
   Injectable,
@@ -12,6 +12,7 @@ import { ListResaleDto } from './dto/list-resale.dto';
 import { BuyResaleDto } from './dto/buy-resale.dto';
 import { RemoveResaleDto } from './dto/remove-resale.dto';
 import { TransactionStatus, TransactionType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class TicketService {
@@ -24,9 +25,24 @@ export class TicketService {
 
   // ===================== Private Helpers =====================
   private async validateEvent(eventId: string) {
+    // Caching event validation
+    // - TTL: 5 minutes, SWR: 1 minute for stable event data
+    // - Tags: `event_${eventId}`, `events` for invalidation on event updates
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        date: true,
+        organizerId: true,
+        ticketCategories: true,
+      },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`event_${eventId}`, 'events'],
+      },
     });
     if (!event || !event.isActive) {
       this.logger.warn(`Event ${eventId} not found or inactive`);
@@ -40,7 +56,17 @@ export class TicketService {
   }
 
   private async validateUser(userId: string, event: any) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    // Caching user validation
+    // - Consistent with AuthService caching
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_${userId}`],
+      },
+    });
     if (!user) {
       this.logger.error(`User ${userId} not found`);
       throw new NotFoundException('User not found');
@@ -56,8 +82,22 @@ export class TicketService {
     ticketCategoryId: string,
     eventId: string,
   ) {
+    // Caching ticket category validation
+    // - Shorter TTL/SWR due to frequent updates (minted tickets)
     const ticketCategory = await this.prisma.ticketCategory.findFirst({
       where: { id: ticketCategoryId, eventId },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        maxTickets: true,
+        minted: true,
+      },
+      cacheStrategy: {
+        ttl: 60,
+        swr: 30,
+        tags: [`ticket_category_${ticketCategoryId}`],
+      },
     });
     if (!ticketCategory) {
       this.logger.warn(
@@ -79,6 +119,7 @@ export class TicketService {
       const code = await this.paymentService.generateUniqueTicketCode();
       const ticket = await this.prisma.ticket.create({
         data: { userId, eventId, ticketCategoryId, code },
+        select: { id: true },
       });
       ticketIds.push(ticket.id);
     }
@@ -154,7 +195,7 @@ export class TicketService {
     await this.prisma.transaction.delete({ where: { reference } });
   }
 
-  private validateResaleTickets(
+  private async validateResaleTickets(
     tickets: any[],
     ticketIds: string[],
     userId: string,
@@ -195,6 +236,49 @@ export class TicketService {
     });
   }
 
+  private async invalidateTicketCache(
+    ticketId: string,
+    eventId: string,
+    userId: string,
+  ) {
+    // Invalidate caches for ticket, event resale tickets, and user tickets
+    const tags = [
+      `ticket_${ticketId}`,
+      `resale_tickets_${eventId}`,
+      `user_tickets_${userId}`,
+      'tickets',
+    ];
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P6003'
+      ) {
+        this.logger.error('Cache invalidation rate limit reached:', e.message);
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  private async invalidateTicketCategoryCache(ticketCategoryId: string) {
+    try {
+      await this.prisma.$accelerate.invalidate({
+        tags: [`ticket_category_${ticketCategoryId}`],
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P6003'
+      ) {
+        this.logger.error('Cache invalidation rate limit reached:', e.message);
+      } else {
+        throw e;
+      }
+    }
+  }
+
   // ===================== Ticket Purchase =====================
   async buyNewTicket(dto: BuyNewDto, userId: string, clientPage: string) {
     this.logger.log(
@@ -222,6 +306,18 @@ export class TicketService {
         return { ...category, quantity: item.quantity };
       }),
     );
+
+    const hasFree = ticketCategories.some((c) => c.price === 0);
+    const hasPaid = ticketCategories.some((c) => c.price > 0);
+
+    if (hasFree && hasPaid) {
+      this.logger.warn(
+        `User ${userId} attempted to mix free and paid tickets in one purchase`,
+      );
+      throw new BadRequestException(
+        'You cannot combine free and paid tickets in the same purchase. Please get them separately.',
+      );
+    }
 
     const totalAmount = ticketCategories.reduce(
       (sum, category) => sum + category.price * category.quantity,
@@ -251,7 +347,6 @@ export class TicketService {
 
     try {
       if (totalAmount === 0) {
-        // Free event: Skip payment, create transaction with SUCCESS status
         await this.createTransaction(
           reference,
           userId,
@@ -261,6 +356,7 @@ export class TicketService {
           'SUCCESS',
           ticketIds,
         );
+
         await Promise.all(
           ticketCategories.map((category) =>
             this.prisma.ticketCategory.update({
@@ -269,6 +365,41 @@ export class TicketService {
             }),
           ),
         );
+
+        // Invalidate ticket category and user ticket caches
+        await Promise.all([
+          ...ticketCategories.map((category) =>
+            this.invalidateTicketCategoryCache(category.id),
+          ),
+          this.invalidateTicketCache(ticketIds[0], dto.eventId, userId),
+        ]);
+
+        const txn = await this.prisma.transaction.findUnique({
+          where: { reference },
+          select: {
+            reference: true,
+            user: { select: { email: true, name: true } },
+            event: {
+              select: {
+                name: true,
+                organizer: { select: { email: true, name: true } },
+              },
+            },
+          },
+        });
+
+        const ticketDetails = await this.prisma.ticket.findMany({
+          where: { id: { in: ticketIds } },
+          select: { id: true, ticketCategory: { select: { name: true } } },
+        });
+
+        const formattedDetails = ticketDetails.map((t) => ({
+          categoryName: t.ticketCategory?.name,
+          ticketId: t.id,
+        }));
+
+        await this.paymentService.sendPurchaseEmails(txn, formattedDetails, 0);
+
         return {
           message: 'Free tickets created successfully',
           ticketIds,
@@ -280,18 +411,22 @@ export class TicketService {
         reference,
         userId,
         dto.eventId,
-        totalAmount + totalAmount * 0.05,
+        totalAmount,
         'PURCHASE',
         'PENDING',
         ticketIds,
       );
+
+      // Invalidate user ticket cache to reflect pending transaction
+      await this.invalidateTicketCache(ticketIds[0], dto.eventId, userId);
+
       this.logger.log(
         `Preparing to initiate payment for ${ticketIds.length} tickets, ref: ${reference}`,
       );
       const checkoutUrl = await this.initiatePayment(
         user,
         event,
-        totalAmount + totalAmount * 0.05,
+        totalAmount,
         reference,
         ticketIds,
         clientPage,
@@ -316,16 +451,31 @@ export class TicketService {
     const { ticketIds } = dto;
 
     return this.prisma.$transaction(async (tx) => {
+      // Caching resale ticket validation
       const tickets = await tx.ticket.findMany({
         where: {
           id: { in: ticketIds },
           isListed: true,
           resalePrice: { not: null },
         },
-        include: {
-          event: true,
-          user: true,
+        select: {
+          id: true,
+          eventId: true,
+          userId: true,
+          resalePrice: true,
+          event: { select: { isActive: true, date: true, organizerId: true } },
+          user: { select: { id: true, email: true, name: true } },
           ticketCategory: { select: { name: true, price: true } },
+        },
+        cacheStrategy: {
+          ttl: 60,
+          swr: 30,
+          tags: ticketIds
+            .map((id) => `ticket_${id}`)
+            .concat([
+              `resale_tickets_${ticketIds[0] ? (await tx.ticket.findUnique({ where: { id: ticketIds[0] }, select: { eventId: true } })).eventId : ''}`,
+              'tickets',
+            ]),
         },
       });
 
@@ -342,6 +492,7 @@ export class TicketService {
           type: 'RESALE',
           tickets: { some: { ticketId: { in: ticketIds } } },
         },
+        select: { reference: true },
       });
       if (existingTx) {
         throw new BadRequestException(
@@ -371,6 +522,13 @@ export class TicketService {
           },
         });
 
+        // Invalidate ticket and resale caches
+        await Promise.all(
+          ticketIds.map((id) =>
+            this.invalidateTicketCache(id, eventId, userId),
+          ),
+        );
+
         const checkoutUrl = await this.initiatePayment(
           buyer,
           tickets[0].event,
@@ -398,9 +556,20 @@ export class TicketService {
     return this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findFirst({
         where: { id: ticketId, userId },
-        include: {
-          event: true,
+        select: {
+          id: true,
+          userId: true,
+          eventId: true,
+          isUsed: true,
+          isListed: true,
+          resaleCount: true,
+          event: { select: { isActive: true, date: true } },
           ticketCategory: { select: { name: true, price: true } },
+        },
+        cacheStrategy: {
+          ttl: 60,
+          swr: 30,
+          tags: [`ticket_${ticketId}`, 'tickets'],
         },
       });
       if (!ticket) {
@@ -439,7 +608,18 @@ export class TicketService {
             bankCode,
             accountNumber,
           },
+          select: {
+            id: true,
+            isListed: true,
+            resalePrice: true,
+            listedAt: true,
+            bankCode: true,
+            accountNumber: true,
+          },
         });
+
+        // Invalidate ticket and resale caches
+        await this.invalidateTicketCache(ticketId, ticket.eventId, userId);
         return updatedTicket;
       } catch (err) {
         this.logger.error(
@@ -457,9 +637,18 @@ export class TicketService {
     return this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findFirst({
         where: { id: ticketId, userId },
-        include: {
-          event: true,
+        select: {
+          id: true,
+          userId: true,
+          eventId: true,
+          isListed: true,
+          event: { select: { isActive: true, date: true } },
           ticketCategory: { select: { name: true, price: true } },
+        },
+        cacheStrategy: {
+          ttl: 60,
+          swr: 30,
+          tags: [`ticket_${ticketId}`, 'tickets'],
         },
       });
       if (!ticket) {
@@ -490,7 +679,18 @@ export class TicketService {
             bankCode: null,
             accountNumber: null,
           },
+          select: {
+            id: true,
+            isListed: true,
+            resalePrice: true,
+            listedAt: true,
+            bankCode: true,
+            accountNumber: true,
+          },
         });
+
+        // Invalidate ticket and resale caches
+        await this.invalidateTicketCache(ticketId, ticket.eventId, userId);
         return updatedTicket;
       } catch (err) {
         this.logger.error(
@@ -509,37 +709,67 @@ export class TicketService {
 
     return this.prisma.ticket.findMany({
       where,
-      include: {
-        event: true,
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        resalePrice: true,
+        listedAt: true,
+        event: { select: { name: true, date: true, isActive: true } },
         user: {
           select: { id: true, name: true, email: true, profileImage: true },
         },
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: eventId ? [`resale_tickets_${eventId}`, 'tickets'] : ['tickets'],
+      },
     });
   }
 
   async getMyListings(userId: string) {
     return this.prisma.ticket.findMany({
       where: { userId, isListed: true },
-      include: {
-        event: true,
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        resalePrice: true,
+        listedAt: true,
+        event: { select: { name: true, date: true, isActive: true } },
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_tickets_${userId}`, 'tickets'],
+      },
     });
   }
 
   async getBoughtFromResale(userId: string) {
     return this.prisma.ticket.findMany({
       where: { soldTo: userId },
-      include: {
-        event: true,
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        resalePrice: true,
+        listedAt: true,
+        event: { select: { name: true, date: true, isActive: true } },
         user: { select: { id: true, name: true } },
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_tickets_${userId}`, 'tickets'],
+      },
     });
   }
 
@@ -549,11 +779,19 @@ export class TicketService {
         userId,
         TransactionTicket: { some: { transaction: { status: 'SUCCESS' } } },
       },
-      include: {
-        event: true,
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        event: { select: { name: true, date: true, isActive: true } },
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { createdAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_tickets_${userId}`, 'tickets'],
+      },
     });
   }
 
@@ -571,9 +809,21 @@ export class TicketService {
 
     const ticket = await this.prisma.ticket.findFirst({
       where: { eventId, ...(ticketId ? { id: ticketId } : { code }) },
-      include: {
-        event: true,
+      select: {
+        id: true,
+        code: true,
+        eventId: true,
+        userId: true,
+        isUsed: true,
+        event: {
+          select: { organizerId: true, name: true, date: true, isActive: true },
+        },
         ticketCategory: { select: { name: true, price: true } },
+      },
+      cacheStrategy: {
+        ttl: 60,
+        swr: 30,
+        tags: [`ticket_${ticketId || code || ''}`, 'tickets'],
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
@@ -588,8 +838,6 @@ export class TicketService {
       status = 'USED';
       message = 'Ticket has already been used';
     } else if (isOrganizer) {
-      // first time: just show valid
-      // second time: mark as used
       await this.prisma.ticket.update({
         where: { id: ticket.id },
         data: { isUsed: true },
@@ -597,6 +845,9 @@ export class TicketService {
       status = 'VALID';
       message = 'Ticket is valid and now marked as used';
       markedUsed = true;
+
+      // Invalidate ticket cache after marking as used
+      await this.invalidateTicketCache(ticket.id, eventId, ticket.userId);
     }
 
     return {

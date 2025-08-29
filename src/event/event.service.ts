@@ -12,6 +12,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import slugify from 'slugify';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class EventService {
@@ -23,18 +24,60 @@ export class EventService {
 
   // Private Helpers
   private async findEventById(eventId: string) {
+    // Caching event lookup by ID
+    // - TTL: 5 minutes to reduce DB load for frequent event checks in ticket purchase flow
+    // - SWR: 1 minute to serve cached data quickly while refreshing for near-real-time updates
+    // - Tags: `event_${eventId}` for granular invalidation, `events` for list invalidation
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        organizerId: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+      },
+      cacheStrategy: {
+        ttl: 300, // 5 minutes
+        swr: 60,  // 1 minute
+        tags: [`event_${eventId}`, 'events'],
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
     return event;
   }
 
   private async findEventBySlug(slug: string) {
+    // Caching event lookup by slug
+    // - Used in public event pages (e.g., ticket browsing)
+    // - Same TTL/SWR strategy as findEventById
     const event = await this.prisma.event.findUnique({
       where: { slug },
-      include: { ticketCategories: true , organizer: true},
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        organizerId: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+        organizer: { select: { name: true, email: true, profileImage: true } },
+      },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`event_${slug}`, 'events'],
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
     return event;
@@ -64,7 +107,10 @@ export class EventService {
   private async generateUniqueSlug(name: string): Promise<string> {
     const baseSlug = slugify(name, { lower: true, strict: true });
     let slug = baseSlug;
-    const exists = await this.prisma.event.findUnique({ where: { slug } });
+    const exists = await this.prisma.event.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
     if (exists) {
       slug = `${baseSlug}-${Date.now().toString().slice(-5)}`;
     }
@@ -76,18 +122,39 @@ export class EventService {
     try {
       await this.cloudinary.deleteImage(bannerUrl);
     } catch (err) {
-      this.logger.warn(
-        `Failed to delete banner from Cloudinary: ${err.message}`,
-      );
+      this.logger.warn(`Failed to delete banner from Cloudinary: ${err.message}`);
     }
   }
 
   private async checkIfTicketsExist(eventId: string): Promise<void> {
-    const ticketsCount = await this.prisma.ticket.count({ where: { eventId } });
+    const ticketsCount = await this.prisma.ticket.count({
+      where: { eventId },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`event_tickets_${eventId}`],
+      },
+    });
     if (ticketsCount > 0) {
       throw new BadRequestException(
         'Event cannot be deleted because tickets have already been purchased',
       );
+    }
+  }
+
+  private async invalidateEventCache(eventId: string, slug?: string) {
+    // Invalidate cache for event by ID and slug, plus global events tag
+    // - Ensures ticket purchase flow sees fresh event data after mutations
+    const tags = [`event_${eventId}`, 'events'];
+    if (slug) tags.push(`event_${slug}`);
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P6003') {
+        this.logger.error('Cache invalidation rate limit reached:', e.message);
+      } else {
+        throw e;
+      }
     }
   }
 
@@ -132,15 +199,28 @@ export class EventService {
             })),
           },
         },
-        include: { ticketCategories: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          organizerId: true,
+          location: true,
+          date: true,
+          category: true,
+          isActive: true,
+          bannerUrl: true,
+          ticketCategories: true,
+        },
       });
 
+      // Invalidate global events cache to ensure new event appears in listings
+      await this.invalidateEventCache(event.id, event.slug);
       this.logger.log(`Event created with ID: ${event.id}`);
       return event;
     } catch (err) {
       this.logger.error(`Error creating event: ${err.message}`, err.stack);
-      console.log(err.message);
-      throw new InternalServerErrorException(err.message);
+      throw new InternalServerErrorException('Failed to create event');
     }
   }
 
@@ -154,11 +234,13 @@ export class EventService {
     this.validateOwnership(event, userId);
 
     let bannerUrl: string | undefined;
-
     if (file) {
       bannerUrl = await this.uploadBannerIfProvided(file);
-    } else if (event.bannerUrl) {
-      bannerUrl = event.bannerUrl;
+      if (event.bannerUrl && bannerUrl !== event.bannerUrl) {
+        await this.deleteBannerIfExists(event.bannerUrl);
+      }
+    } else {
+      bannerUrl = event.bannerUrl ?? undefined;
     }
 
     const data: any = {
@@ -171,7 +253,6 @@ export class EventService {
     };
 
     if (dto.ticketCategories) {
-      // Validate that all provided categories exist
       for (const category of dto.ticketCategories) {
         const existingCategory = event.ticketCategories.find(
           (cat) => cat.id === category.id || cat.name === category.name,
@@ -191,7 +272,6 @@ export class EventService {
         }
       }
 
-      // Update existing categories
       data.ticketCategories = {
         update: dto.ticketCategories.map((category) => ({
           where: {
@@ -208,11 +288,27 @@ export class EventService {
       };
     }
 
-    return this.prisma.event.update({
+    const updatedEvent = await this.prisma.event.update({
       where: { id: eventId },
       data,
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        organizerId: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+      },
     });
+
+    // Invalidate cache to reflect updated event data in ticket purchase flow
+    await this.invalidateEventCache(eventId, updatedEvent.slug);
+    return updatedEvent;
   }
 
   // Status Management
@@ -220,10 +316,15 @@ export class EventService {
     const event = await this.findEventById(id);
     this.validateOwnership(event, userId);
 
-    return this.prisma.event.update({
+    const updatedEvent = await this.prisma.event.update({
       where: { id },
       data: { isActive },
+      select: { id: true, isActive: true, slug: true },
     });
+
+    // Invalidate cache to reflect status change (affects ticket purchase eligibility)
+    await this.invalidateEventCache(id, updatedEvent.slug);
+    return updatedEvent;
   }
 
   // Deletion
@@ -235,15 +336,36 @@ export class EventService {
 
     await this.prisma.event.delete({ where: { id } });
 
+    // Invalidate cache to remove deleted event from listings
+    await this.invalidateEventCache(id, event.slug);
     return { message: 'Event deleted successfully', eventId: id };
   }
 
   // Queries
   async getOrganizerEvents(userId: string) {
+    // Caching organizer events
+    // - Used for organizer dashboard to show their events
+    // - TTL/SWR for fast response and reduced DB load
     const events = await this.prisma.event.findMany({
       where: { organizerId: userId },
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+      },
       orderBy: { createdAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`organizer_events_${userId}`, 'events'],
+      },
     });
 
     if (events.length === 0) {
@@ -254,12 +376,22 @@ export class EventService {
   }
 
   async getSingleEvent(eventId: string) {
+    // Caching single event query
+    // - Used in ticket purchase flow for event details page
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      include: {
-        organizer: {
-          select: { name: true, email: true, profileImage: true },
-        },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        organizerId: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        organizer: { select: { name: true, email: true, profileImage: true } },
         ticketCategories: true,
         tickets: {
           where: { isListed: true },
@@ -269,15 +401,15 @@ export class EventService {
             listedAt: true,
             ticketCategory: { select: { name: true, price: true } },
             user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                profileImage: true,
-              },
+              select: { id: true, name: true, email: true, profileImage: true },
             },
           },
         },
+      },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`event_${eventId}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -290,12 +422,22 @@ export class EventService {
   }
 
   async getAllEvents() {
+    // Caching all active events
+    // - Used in public event listings for ticket browsing
     return this.prisma.event.findMany({
       where: { isActive: true },
-      include: {
-        organizer: {
-          select: { name: true, email: true, profileImage: true },
-        },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        organizerId: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        organizer: { select: { name: true, email: true, profileImage: true } },
         ticketCategories: true,
         tickets: {
           where: { isListed: true },
@@ -305,17 +447,17 @@ export class EventService {
             listedAt: true,
             ticketCategory: { select: { name: true, price: true } },
             user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                profileImage: true,
-              },
+              select: { id: true, name: true, email: true, profileImage: true },
             },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: ['events'],
+      },
     });
   }
 
@@ -324,6 +466,8 @@ export class EventService {
     from?: string;
     to?: string;
   }) {
+    // Caching filtered event queries
+    // - Used for search functionality in ticket browsing
     const filters: any = { isActive: true };
 
     if (query.name) {
@@ -338,20 +482,58 @@ export class EventService {
 
     return this.prisma.event.findMany({
       where: filters,
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
         organizer: { select: { name: true, email: true } },
         ticketCategories: true,
       },
       orderBy: { createdAt: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: ['events'],
+      },
     });
   }
 
   async getUserEvents(userId: string) {
+    // Caching user-specific ticket queries
+    // - Used in ticket purchase history or resale flow
     const tickets = await this.prisma.ticket.findMany({
       where: { userId },
-      include: {
-        event: true,
+      select: {
+        id: true,
+        eventId: true,
+        userId: true,
+        ticketCategoryId: true,
+        resalePrice: true,
+        isListed: true,
+        listedAt: true,
+        event: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            date: true,
+            location: true,
+            category: true,
+            isActive: true,
+          },
+        },
         ticketCategory: { select: { name: true, price: true } },
+      },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_tickets_${userId}`],
       },
     });
 
@@ -379,24 +561,60 @@ export class EventService {
   }
 
   async getUpcomingEvents() {
+    // Caching upcoming events
+    // - Used in ticket browsing for future events
     return this.prisma.event.findMany({
       where: {
         isActive: true,
         date: { gte: new Date() },
       },
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+      },
       orderBy: { date: 'asc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: ['events'],
+      },
     });
   }
 
   async getPastEvents() {
+    // Caching past events
+    // - Less critical but cached for consistency
     return this.prisma.event.findMany({
       where: {
         isActive: true,
         date: { lt: new Date() },
       },
-      include: { ticketCategories: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        location: true,
+        date: true,
+        category: true,
+        isActive: true,
+        bannerUrl: true,
+        ticketCategories: true,
+      },
       orderBy: { date: 'desc' },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: ['events'],
+      },
     });
   }
 }
