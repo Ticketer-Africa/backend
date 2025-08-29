@@ -781,11 +781,8 @@ export class TicketService {
         userId,
         TransactionTicket: { some: { transaction: { status: 'SUCCESS' } } },
       },
-      select: {
-        id: true,
-        eventId: true,
-        userId: true,
-        event: { select: { name: true, date: true, isActive: true } },
+      include: {
+        event: true,
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { createdAt: 'desc' },
