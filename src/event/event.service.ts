@@ -23,11 +23,16 @@ export class EventService {
   ) {}
 
   // Private Helpers
+  private sanitizeForCacheTag(value: string): string {
+    return value.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
   private async findEventById(eventId: string) {
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     // Caching event lookup by ID
     // - TTL: 5 minutes to reduce DB load for frequent event checks in ticket purchase flow
     // - SWR: 1 minute to serve cached data quickly while refreshing for near-real-time updates
-    // - Tags: `event_${eventId}` for granular invalidation, `events` for list invalidation
+    // - Tags: `event_${sanitizedEventId}` for granular invalidation, `events` for list invalidation
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -46,7 +51,7 @@ export class EventService {
       cacheStrategy: {
         ttl: 300, // 5 minutes
         swr: 60, // 1 minute
-        tags: [`event_${eventId}`, 'events'],
+        tags: [`event_${sanitizedEventId}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -54,9 +59,7 @@ export class EventService {
   }
 
   private async findEventBySlug(slug: string) {
-    // Sanitize slug for cache tag: replace non-alphanumeric characters with underscores
-    const sanitizedSlug = slug.replace(/[^a-zA-Z0-9]/g, '_');
-
+    const sanitizedSlug = this.sanitizeForCacheTag(slug);
     const event = await this.prisma.event.findUnique({
       where: { slug },
       select: {
@@ -129,12 +132,13 @@ export class EventService {
   }
 
   private async checkIfTicketsExist(eventId: string): Promise<void> {
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     const ticketsCount = await this.prisma.ticket.count({
       where: { eventId },
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`event_tickets_${eventId}`],
+        tags: [`event_tickets_${sanitizedEventId}`],
       },
     });
     if (ticketsCount > 0) {
@@ -145,9 +149,10 @@ export class EventService {
   }
 
   private async invalidateEventCache(eventId: string, slug?: string) {
-    const tags = [`event_${eventId}`, 'events'];
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
+    const tags = [`event_${sanitizedEventId}`, 'events'];
     if (slug) {
-      const sanitizedSlug = slug.replace(/[^a-zA-Z0-9]/g, '_');
+      const sanitizedSlug = this.sanitizeForCacheTag(slug);
       tags.push(`event_${sanitizedSlug}`);
     }
     this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
@@ -350,6 +355,7 @@ export class EventService {
 
   // Queries
   async getOrganizerEvents(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     // Caching organizer events
     // - Used for organizer dashboard to show their events
     // - TTL/SWR for fast response and reduced DB load
@@ -371,7 +377,7 @@ export class EventService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`organizer_events_${userId}`, 'events'],
+        tags: [`organizer_events_${sanitizedUserId}`, 'events'],
       },
     });
 
@@ -383,6 +389,7 @@ export class EventService {
   }
 
   async getSingleEvent(eventId: string) {
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     // Caching single event query
     // - Used in ticket purchase flow for event details page
     const event = await this.prisma.event.findUnique({
@@ -416,7 +423,7 @@ export class EventService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`event_${eventId}`, 'events'],
+        tags: [`event_${sanitizedEventId}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -512,6 +519,7 @@ export class EventService {
   }
 
   async getUserEvents(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     // Caching user-specific ticket queries
     // - Used in ticket purchase history or resale flow
     const tickets = await this.prisma.ticket.findMany({
@@ -540,7 +548,7 @@ export class EventService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`user_tickets_${userId}`],
+        tags: [`user_tickets_${sanitizedUserId}`],
       },
     });
 

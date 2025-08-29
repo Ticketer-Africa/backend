@@ -24,10 +24,15 @@ export class TicketService {
   ) {}
 
   // ===================== Private Helpers =====================
+  private sanitizeForCacheTag(value: string): string {
+    return value.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
   private async validateEvent(eventId: string) {
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     // Caching event validation
     // - TTL: 5 minutes, SWR: 1 minute for stable event data
-    // - Tags: `event_${eventId}`, `events` for invalidation on event updates
+    // - Tags: `event_${sanitizedEventId}`, `events` for invalidation on event updates
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -41,7 +46,7 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`event_${eventId}`, 'events'],
+        tags: [`event_${sanitizedEventId}`, 'events'],
       },
     });
     if (!event || !event.isActive) {
@@ -56,6 +61,7 @@ export class TicketService {
   }
 
   private async validateUser(userId: string, event: any) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     // Caching user validation
     // - Consistent with AuthService caching
     const user = await this.prisma.user.findUnique({
@@ -64,7 +70,7 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`user_${userId}`],
+        tags: [`user_${sanitizedUserId}`],
       },
     });
     if (!user) {
@@ -82,6 +88,8 @@ export class TicketService {
     ticketCategoryId: string,
     eventId: string,
   ) {
+    const sanitizedTicketCategoryId =
+      this.sanitizeForCacheTag(ticketCategoryId);
     // Caching ticket category validation
     // - Shorter TTL/SWR due to frequent updates (minted tickets)
     const ticketCategory = await this.prisma.ticketCategory.findFirst({
@@ -96,7 +104,7 @@ export class TicketService {
       cacheStrategy: {
         ttl: 60,
         swr: 30,
-        tags: [`ticket_category_${ticketCategoryId}`],
+        tags: [`ticket_category_${sanitizedTicketCategoryId}`],
       },
     });
     if (!ticketCategory) {
@@ -241,13 +249,16 @@ export class TicketService {
     eventId: string,
     userId: string,
   ) {
-    const sanitizedEventId = eventId.replace(/[^a-zA-Z0-9]/g, '_');
+    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     const tags = [
-      `ticket_${ticketId}`,
+      `ticket_${sanitizedTicketId}`,
       `resale_tickets_${sanitizedEventId}`,
-      `user_tickets_${userId}`,
+      `user_tickets_${sanitizedUserId}`,
       'tickets',
     ];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
@@ -263,10 +274,12 @@ export class TicketService {
   }
 
   private async invalidateTicketCategoryCache(ticketCategoryId: string) {
+    const sanitizedTicketCategoryId =
+      this.sanitizeForCacheTag(ticketCategoryId);
+    const tags = [`ticket_category_${sanitizedTicketCategoryId}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
-      await this.prisma.$accelerate.invalidate({
-        tags: [`ticket_category_${ticketCategoryId}`],
-      });
+      await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -474,7 +487,9 @@ export class TicketService {
         cacheStrategy: {
           ttl: 60,
           swr: 30,
-          tags: ticketIds.map((id) => `ticket_${id}`).concat(['tickets']),
+          tags: ticketIds
+            .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
+            .concat(['tickets']),
         },
       });
 
@@ -483,7 +498,7 @@ export class TicketService {
         ticketIds,
         userId,
       );
-      const sanitizedEventId = eventId.replace(/[^a-zA-Z0-9]/g, '_');
+      const sanitizedEventId = this.sanitizeForCacheTag(eventId);
       const buyer = await this.validateUser(userId, tickets[0].event);
 
       const existingTx = await tx.transaction.findFirst({
@@ -563,6 +578,7 @@ export class TicketService {
   // ===================== Resale Management =====================
   async listForResale(dto: ListResaleDto, userId: string) {
     const { ticketId, resalePrice, bankCode, accountNumber } = dto;
+    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
 
     return this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findFirst({
@@ -580,7 +596,7 @@ export class TicketService {
         cacheStrategy: {
           ttl: 60,
           swr: 30,
-          tags: [`ticket_${ticketId}`, 'tickets'],
+          tags: [`ticket_${sanitizedTicketId}`, 'tickets'],
         },
       });
       if (!ticket) {
@@ -644,6 +660,7 @@ export class TicketService {
 
   async removeFromResale(dto: RemoveResaleDto, userId: string) {
     const { ticketId } = dto;
+    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
 
     return this.prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findFirst({
@@ -659,7 +676,7 @@ export class TicketService {
         cacheStrategy: {
           ttl: 60,
           swr: 30,
-          tags: [`ticket_${ticketId}`, 'tickets'],
+          tags: [`ticket_${sanitizedTicketId}`, 'tickets'],
         },
       });
       if (!ticket) {
@@ -718,6 +735,7 @@ export class TicketService {
     const where: any = { isListed: true, soldTo: null };
     if (eventId) where.eventId = eventId;
 
+    const sanitizedEventId = eventId ? this.sanitizeForCacheTag(eventId) : null;
     return this.prisma.ticket.findMany({
       where,
       select: {
@@ -738,12 +756,15 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: eventId ? [`resale_tickets_${eventId}`, 'tickets'] : ['tickets'],
+        tags: sanitizedEventId
+          ? [`resale_tickets_${sanitizedEventId}`, 'tickets']
+          : ['tickets'],
       },
     });
   }
 
   async getMyListings(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: { userId, isListed: true },
       select: {
@@ -759,12 +780,13 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`user_tickets_${userId}`, 'tickets'],
+        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
       },
     });
   }
 
   async getBoughtFromResale(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: { soldTo: userId },
       select: {
@@ -781,12 +803,13 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`user_tickets_${userId}`, 'tickets'],
+        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
       },
     });
   }
 
   async getMyTickets(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: {
         userId,
@@ -800,7 +823,7 @@ export class TicketService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`user_tickets_${userId}`, 'tickets'],
+        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
       },
     });
   }
@@ -817,6 +840,7 @@ export class TicketService {
       throw new BadRequestException('Either ticketId or code is required');
     }
 
+    const sanitizedTag = this.sanitizeForCacheTag(ticketId || code || '');
     const ticket = await this.prisma.ticket.findFirst({
       where: { eventId, ...(ticketId ? { id: ticketId } : { code }) },
       select: {
@@ -833,7 +857,7 @@ export class TicketService {
       cacheStrategy: {
         ttl: 60,
         swr: 30,
-        tags: [`ticket_${ticketId || code || ''}`, 'tickets'],
+        tags: [`ticket_${sanitizedTag}`, 'tickets'],
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
