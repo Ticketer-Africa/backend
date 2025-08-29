@@ -241,10 +241,10 @@ export class TicketService {
     eventId: string,
     userId: string,
   ) {
-    // Invalidate caches for ticket, event resale tickets, and user tickets
+    const sanitizedEventId = eventId.replace(/[^a-zA-Z0-9]/g, '_');
     const tags = [
       `ticket_${ticketId}`,
-      `resale_tickets_${eventId}`,
+      `resale_tickets_${sanitizedEventId}`,
       `user_tickets_${userId}`,
       'tickets',
     ];
@@ -450,6 +450,10 @@ export class TicketService {
   async buyResaleTicket(dto: BuyResaleDto, userId: string) {
     const { ticketIds } = dto;
 
+    if (!ticketIds || ticketIds.length === 0) {
+      throw new BadRequestException('At least one ticket is required');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // Caching resale ticket validation
       const tickets = await tx.ticket.findMany({
@@ -470,12 +474,7 @@ export class TicketService {
         cacheStrategy: {
           ttl: 60,
           swr: 30,
-          tags: ticketIds
-            .map((id) => `ticket_${id}`)
-            .concat([
-              `resale_tickets_${ticketIds[0] ? (await tx.ticket.findUnique({ where: { id: ticketIds[0] }, select: { eventId: true } })).eventId : ''}`,
-              'tickets',
-            ]),
+          tags: ticketIds.map((id) => `ticket_${id}`).concat(['tickets']),
         },
       });
 
@@ -484,6 +483,7 @@ export class TicketService {
         ticketIds,
         userId,
       );
+      const sanitizedEventId = eventId.replace(/[^a-zA-Z0-9]/g, '_');
       const buyer = await this.validateUser(userId, tickets[0].event);
 
       const existingTx = await tx.transaction.findFirst({
@@ -504,7 +504,9 @@ export class TicketService {
         (sum, ticket) => sum + (ticket.resalePrice || 0),
         0,
       );
-      const reference = `resale_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const reference = `resale_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
 
       await this.lockResaleTickets(tx, ticketIds);
       try {
@@ -538,12 +540,21 @@ export class TicketService {
           '',
         );
 
+        // Update cache tags for the query after successful transaction
+        await this.prisma.$accelerate.invalidate({
+          tags: [`resale_tickets_${sanitizedEventId}`, 'tickets'],
+        });
+
         return { checkoutUrl };
-      } catch {
+      } catch (err) {
         await tx.ticket.updateMany({
           where: { id: { in: ticketIds } },
           data: { isListed: true },
         });
+        this.logger.error(
+          `Failed to generate payment link for resale tickets: ${err.message}`,
+          err.stack,
+        );
         throw new BadRequestException('Failed to generate payment link');
       }
     });
