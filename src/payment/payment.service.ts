@@ -12,7 +12,6 @@ import { MailService } from 'src/mail/mail.service';
 import { InitiateDto } from './dto/initiate.dto';
 import { randomBytes } from 'crypto';
 import { generateVerificationCode } from 'src/common/utils/qrCode.utils';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PaymentService {
@@ -27,6 +26,10 @@ export class PaymentService {
   ) {}
 
   // Private Helpers
+  private sanitizeForCacheTag(value: string): string {
+    return value.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
   private async callPaymentGateway<T>(
     method: 'get' | 'post',
     url: string,
@@ -77,6 +80,7 @@ export class PaymentService {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   private async findAndLockTransaction(reference: string) {
+    const sanitizedReference = this.sanitizeForCacheTag(reference);
     return this.prisma.$transaction(async (tx) => {
       const txn = await tx.transaction.findUnique({
         where: { reference },
@@ -116,7 +120,7 @@ export class PaymentService {
         cacheStrategy: {
           ttl: 60,
           swr: 30,
-          tags: [`transaction_${reference}`],
+          tags: [`transaction_${sanitizedReference}`],
         },
       });
       if (!txn) throw new NotFoundException('Transaction not found');
@@ -209,53 +213,48 @@ export class PaymentService {
   }
 
   private async invalidateTransactionCache(reference: string) {
+    const sanitizedReference = this.sanitizeForCacheTag(reference);
+    const tags = [`transaction_${sanitizedReference}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
-      await this.prisma.$accelerate.invalidate({
-        tags: [`transaction_${reference}`],
-      });
+      await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(
+        `Cache invalidation failed for transaction ${reference}: ${e.message}`,
+        e.stack,
+      );
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
   private async invalidateTicketCategoryCache(ticketCategoryId: string) {
+    const sanitizedTicketCategoryId =
+      this.sanitizeForCacheTag(ticketCategoryId);
+    const tags = [`ticket_category_${sanitizedTicketCategoryId}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
-      await this.prisma.$accelerate.invalidate({
-        tags: [`ticket_category_${ticketCategoryId}`],
-      });
+      await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(
+        `Cache invalidation failed for ticket category ${ticketCategoryId}: ${e.message}`,
+        e.stack,
+      );
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
   private async invalidateWalletCache(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
+    const tags = [`wallet_${sanitizedUserId}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
-      await this.prisma.$accelerate.invalidate({
-        tags: [`wallet_${userId}`],
-      });
+      await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(
+        `Cache invalidation failed for wallet ${userId}: ${e.message}`,
+        e.stack,
+      );
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -264,23 +263,26 @@ export class PaymentService {
     eventId: string,
     userId: string,
   ) {
+    const sanitizedTicketIds = ticketIds.map((id) =>
+      this.sanitizeForCacheTag(id),
+    );
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     const tags = [
-      ...ticketIds.map((id) => `ticket_${id}`),
-      `resale_tickets_${eventId}`,
-      `user_tickets_${userId}`,
+      ...sanitizedTicketIds.map((id) => `ticket_${id}`),
+      `resale_tickets_${sanitizedEventId}`,
+      `user_tickets_${sanitizedUserId}`,
       'tickets',
     ];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(
+        `Cache invalidation failed for tickets ${ticketIds.join(', ')}: ${e.message}`,
+        e.stack,
+      );
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -326,7 +328,9 @@ export class PaymentService {
         cacheStrategy: {
           ttl: 300,
           swr: 60,
-          tags: [`user_${process.env.ADMIN_EMAIL}`],
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
         },
       });
 
@@ -383,7 +387,9 @@ export class PaymentService {
       cacheStrategy: {
         ttl: 60,
         swr: 30,
-        tags: ticketIds.map((id) => `ticket_${id}`).concat(['tickets']),
+        tags: ticketIds
+          .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
+          .concat(['tickets']),
       },
     });
 
@@ -406,58 +412,69 @@ export class PaymentService {
       {} as Record<string, any[]>,
     );
 
-    for (const [categoryId, ticketsInCat] of Object.entries(
-      ticketsByCategory,
-    )) {
-      const ticketCategory = await this.prisma.ticketCategory.findUnique({
-        where: { id: categoryId },
-        select: { id: true, name: true, minted: true, maxTickets: true },
-        cacheStrategy: {
-          ttl: 60,
-          swr: 30,
-          tags: [`ticket_category_${categoryId}`],
-        },
-      });
-      if (!ticketCategory) {
-        throw new NotFoundException(`Ticket category ${categoryId} not found`);
+    try {
+      for (const [categoryId, ticketsInCat] of Object.entries(
+        ticketsByCategory,
+      )) {
+        const ticketCategory = await this.prisma.ticketCategory.findUnique({
+          where: { id: categoryId },
+          select: { id: true, name: true, minted: true, maxTickets: true },
+          cacheStrategy: {
+            ttl: 60,
+            swr: 30,
+            tags: [`ticket_category_${this.sanitizeForCacheTag(categoryId)}`],
+          },
+        });
+        if (!ticketCategory) {
+          throw new NotFoundException(
+            `Ticket category ${categoryId} not found`,
+          );
+        }
+
+        await this.updateTicketCategoryMintedCount(
+          categoryId,
+          ticketsInCat.length,
+        );
       }
 
-      await this.updateTicketCategoryMintedCount(
-        categoryId,
-        ticketsInCat.length,
+      const platformCut = Math.floor(
+        (txn.amount * txn.event.primaryFeeBps) / 10000,
       );
+      const organizerProceeds = txn.amount - platformCut;
+
+      await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
+
+      const platformAdmin = await this.prisma.user.findUnique({
+        where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
+      });
+      if (platformAdmin) {
+        await this.upsertPlatformAdminWallet(platformAdmin.id, platformCut);
+      }
+
+      await this.sendPurchaseEmails(
+        txn,
+        this.generateTicketDetails(tickets, txn.eventId, txn.userId),
+        platformCut,
+      );
+
+      // Invalidate ticket caches
+      await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to process purchase flow for transaction ${txn.reference}: ${err.message}`,
+        err.stack,
+      );
+      throw err; // Rethrow to trigger transaction rollback in verifyTransaction
     }
 
-    const platformCut = Math.floor(
-      (txn.amount * txn.event.primaryFeeBps) / 10000,
-    );
-    const organizerProceeds = txn.amount - platformCut;
-
-    await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
-
-    const platformAdmin = await this.prisma.user.findUnique({
-      where: { email: process.env.ADMIN_EMAIL },
-      select: { id: true, email: true, name: true },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_${process.env.ADMIN_EMAIL}`],
-      },
-    });
-    if (platformAdmin) {
-      await this.upsertPlatformAdminWallet(platformAdmin.id, platformCut);
-    }
-
-    const ticketDetails = this.generateTicketDetails(
-      tickets,
-      txn.eventId,
-      txn.userId,
-    );
-
-    await this.sendPurchaseEmails(txn, ticketDetails, platformCut);
-
-    // Invalidate ticket caches
-    await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
     return ticketIds;
   }
 
@@ -475,7 +492,9 @@ export class PaymentService {
         cacheStrategy: {
           ttl: 300,
           swr: 60,
-          tags: [`user_${process.env.ADMIN_EMAIL}`],
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
         },
       });
       const organizer = await this.prisma.user.findUnique({
@@ -484,7 +503,9 @@ export class PaymentService {
         cacheStrategy: {
           ttl: 300,
           swr: 60,
-          tags: [`user_${tickets[0].event.organizerId}`],
+          tags: [
+            `user_${this.sanitizeForCacheTag(tickets[0].event.organizerId)}`,
+          ],
         },
       });
       const seller = tickets[0].user;
@@ -561,7 +582,9 @@ export class PaymentService {
       cacheStrategy: {
         ttl: 60,
         swr: 30,
-        tags: ticketIds.map((id) => `ticket_${id}`).concat(['tickets']),
+        tags: ticketIds
+          .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
+          .concat(['tickets']),
       },
     });
     if (tickets.length !== ticketIds.length)
@@ -574,84 +597,101 @@ export class PaymentService {
     let totalOrganizerRoyalty = 0;
     let totalSellerProceeds = 0;
 
-    for (const ticket of tickets) {
-      const seller = ticket.user;
-      if (!seller)
-        throw new NotFoundException(`Seller not found for ticket ${ticket.id}`);
+    try {
+      for (const ticket of tickets) {
+        const seller = ticket.user;
+        if (!seller)
+          throw new NotFoundException(
+            `Seller not found for ticket ${ticket.id}`,
+          );
 
-      if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} is missing resale price or payout info`,
+        if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
+          throw new BadRequestException(
+            `Ticket ${ticket.id} is missing resale price or payout info`,
+          );
+        }
+
+        const platformCut = Math.floor(
+          (ticket.resalePrice * event.resaleFeeBps) / 10000,
+        );
+        const organizerRoyalty = Math.floor(
+          (ticket.resalePrice * event.royaltyFeeBps) / 10000,
+        );
+        const sellerProceeds =
+          ticket.resalePrice - (platformCut + organizerRoyalty);
+
+        totalPlatformCut += platformCut;
+        totalOrganizerRoyalty += organizerRoyalty;
+        totalSellerProceeds += sellerProceeds;
+
+        const newCode = await this.generateUniqueTicketCode();
+        await this.prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            userId: txn.userId,
+            isListed: false,
+            code: newCode,
+            resalePrice: null,
+            resaleCount: { increment: 1 },
+            resaleCommission: platformCut + organizerRoyalty,
+            soldTo: txn.userId,
+          },
+        });
+
+        await this.initiateWithdrawal({
+          customer: { email: seller.email, name: seller.name },
+          amount: sellerProceeds,
+          currency: 'NGN',
+          destination: {
+            account_number:
+              process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
+            bank_code: process.env.TEST_BANK_CODE || ticket.bankCode,
+          },
+          reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          notification_url: process.env.NOTIFICATION_URL,
+          narration: `Resale payout for ticket ${ticket.id}`,
+          metadata: { userId: ticket.userId },
+        });
+      }
+
+      await this.updateWalletBalance(event.organizerId, totalOrganizerRoyalty);
+
+      const platformAdmin = await this.prisma.user.findUnique({
+        where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
+      });
+      if (platformAdmin) {
+        await this.upsertPlatformAdminWallet(
+          platformAdmin.id,
+          totalPlatformCut,
         );
       }
 
-      const platformCut = Math.floor(
-        (ticket.resalePrice * event.resaleFeeBps) / 10000,
+      await this.sendResaleEmails(
+        txn,
+        tickets,
+        totalPlatformCut,
+        totalOrganizerRoyalty,
+        totalSellerProceeds,
       );
-      const organizerRoyalty = Math.floor(
-        (ticket.resalePrice * event.royaltyFeeBps) / 10000,
+
+      // Invalidate ticket caches
+      await this.invalidateTicketCache(ticketIds, event.id, txn.userId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to process resale flow for transaction ${txn.reference}: ${err.message}`,
+        err.stack,
       );
-      const sellerProceeds =
-        ticket.resalePrice - (platformCut + organizerRoyalty);
-
-      totalPlatformCut += platformCut;
-      totalOrganizerRoyalty += organizerRoyalty;
-      totalSellerProceeds += sellerProceeds;
-
-      const newCode = await this.generateUniqueTicketCode();
-      await this.prisma.ticket.update({
-        where: { id: ticket.id },
-        data: {
-          userId: txn.userId,
-          isListed: false,
-          code: newCode,
-          resalePrice: null,
-          resaleCount: { increment: 1 },
-          resaleCommission: platformCut + organizerRoyalty,
-          soldTo: txn.userId,
-        },
-      });
-
-      await this.initiateWithdrawal({
-        customer: { email: seller.email, name: seller.name },
-        amount: sellerProceeds,
-        currency: 'NGN',
-        destination: {
-          account_number: process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
-          bank_code: process.env.TEST_BANK_CODE || ticket.bankCode,
-        },
-        reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        notification_url: process.env.NOTIFICATION_URL,
-        narration: `Resale payout for ticket ${ticket.id}`,
-        metadata: { userId: ticket.userId },
-      });
+      throw err; // Rethrow to trigger transaction rollback in verifyTransaction
     }
 
-    await this.updateWalletBalance(event.organizerId, totalOrganizerRoyalty);
-
-    const platformAdmin = await this.prisma.user.findUnique({
-      where: { email: process.env.ADMIN_EMAIL },
-      select: { id: true, email: true, name: true },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_${process.env.ADMIN_EMAIL}`],
-      },
-    });
-    if (platformAdmin) {
-      await this.upsertPlatformAdminWallet(platformAdmin.id, totalPlatformCut);
-    }
-
-    await this.sendResaleEmails(
-      txn,
-      tickets,
-      totalPlatformCut,
-      totalOrganizerRoyalty,
-      totalSellerProceeds,
-    );
-
-    // Invalidate ticket caches
-    await this.invalidateTicketCache(ticketIds, event.id, txn.userId);
     return ticketIds;
   }
 
@@ -780,25 +820,33 @@ export class PaymentService {
       `🎟️ Tickets linked to transaction ${reference}: ${JSON.stringify(ticketIds)}`,
     );
 
-    if (txn.type === 'PURCHASE') {
-      this.logger.log(`🛒 Processing purchase flow for txn ${reference}`);
-      await this.processPurchaseFlow(txn, ticketIds);
-    } else if (txn.type === 'RESALE') {
-      this.logger.log(`♻️ Processing resale flow for txn ${reference}`);
-      await this.processResaleFlow(txn, ticketIds);
-    } else {
-      this.logger.error(`❌ Invalid transaction type: ${txn.type}`);
-      throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
+    try {
+      if (txn.type === 'PURCHASE') {
+        this.logger.log(`🛒 Processing purchase flow for txn ${reference}`);
+        await this.processPurchaseFlow(txn, ticketIds);
+      } else if (txn.type === 'RESALE') {
+        this.logger.log(`♻️ Processing resale flow for txn ${reference}`);
+        await this.processResaleFlow(txn, ticketIds);
+      } else {
+        this.logger.error(`❌ Invalid transaction type: ${txn.type}`);
+        throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
+      }
+
+      this.logger.log(
+        `🎉 Transaction ${reference} verified and processed successfully`,
+      );
+
+      return {
+        message: 'Transaction verified and processed successfully',
+        ticketIds,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Failed to verify transaction ${reference}: ${err.message}`,
+        err.stack,
+      );
+      throw err; // Rethrow to allow caller to handle rollback if needed
     }
-
-    this.logger.log(
-      `🎉 Transaction ${reference} verified and processed successfully`,
-    );
-
-    return {
-      message: 'Transaction verified and processed successfully',
-      ticketIds,
-    };
   }
 
   // Ticket Code Generation

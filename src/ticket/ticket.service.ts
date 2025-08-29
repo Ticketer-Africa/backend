@@ -12,7 +12,6 @@ import { ListResaleDto } from './dto/list-resale.dto';
 import { BuyResaleDto } from './dto/buy-resale.dto';
 import { RemoveResaleDto } from './dto/remove-resale.dto';
 import { TransactionStatus, TransactionType } from '@prisma/client';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class TicketService {
@@ -262,14 +261,8 @@ export class TicketService {
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(`Cache invalidation failed: ${e.message}`, e.stack);
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -281,14 +274,8 @@ export class TicketService {
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(`Cache invalidation failed: ${e.message}`, e.stack);
+      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -379,13 +366,21 @@ export class TicketService {
           ),
         );
 
-        // Invalidate ticket category and user ticket caches
-        await Promise.all([
-          ...ticketCategories.map((category) =>
-            this.invalidateTicketCategoryCache(category.id),
-          ),
-          this.invalidateTicketCache(ticketIds[0], dto.eventId, userId),
-        ]);
+        // Invalidate ticket category and user ticket caches, but don't fail transaction on cache error
+        try {
+          await Promise.all([
+            ...ticketCategories.map((category) =>
+              this.invalidateTicketCategoryCache(category.id),
+            ),
+            this.invalidateTicketCache(ticketIds[0], dto.eventId, userId),
+          ]);
+        } catch (cacheErr) {
+          this.logger.error(
+            `Cache invalidation failed for free ticket purchase, ref ${reference}: ${cacheErr.message}`,
+            cacheErr.stack,
+          );
+          // Continue transaction despite cache failure
+        }
 
         const txn = await this.prisma.transaction.findUnique({
           where: { reference },
@@ -430,9 +425,6 @@ export class TicketService {
         ticketIds,
       );
 
-      // Invalidate user ticket cache to reflect pending transaction
-      await this.invalidateTicketCache(ticketIds[0], dto.eventId, userId);
-
       this.logger.log(
         `Preparing to initiate payment for ${ticketIds.length} tickets, ref: ${reference}`,
       );
@@ -444,6 +436,18 @@ export class TicketService {
         ticketIds,
         clientPage,
       );
+
+      // Invalidate user ticket cache to reflect pending transaction, but don't fail transaction on cache error
+      try {
+        await this.invalidateTicketCache(ticketIds[0], dto.eventId, userId);
+      } catch (cacheErr) {
+        this.logger.error(
+          `Cache invalidation failed for paid ticket purchase, ref ${reference}: ${cacheErr.message}`,
+          cacheErr.stack,
+        );
+        // Continue transaction despite cache failure
+      }
+
       this.logger.log(
         `Payment initiated successfully for ${ticketIds.length} tickets: ${checkoutUrl}`,
       );
@@ -539,13 +543,6 @@ export class TicketService {
           },
         });
 
-        // Invalidate ticket and resale caches
-        await Promise.all(
-          ticketIds.map((id) =>
-            this.invalidateTicketCache(id, eventId, userId),
-          ),
-        );
-
         const checkoutUrl = await this.initiatePayment(
           buyer,
           tickets[0].event,
@@ -555,10 +552,23 @@ export class TicketService {
           '',
         );
 
-        // Update cache tags for the query after successful transaction
-        await this.prisma.$accelerate.invalidate({
-          tags: [`resale_tickets_${sanitizedEventId}`, 'tickets'],
-        });
+        // Invalidate ticket and resale caches, but don't fail transaction on cache error
+        try {
+          await Promise.all(
+            ticketIds.map((id) =>
+              this.invalidateTicketCache(id, eventId, userId),
+            ),
+          );
+          await this.prisma.$accelerate.invalidate({
+            tags: [`resale_tickets_${sanitizedEventId}`, 'tickets'],
+          });
+        } catch (cacheErr) {
+          this.logger.error(
+            `Cache invalidation failed for resale ticket purchase, ref ${reference}: ${cacheErr.message}`,
+            cacheErr.stack,
+          );
+          // Continue transaction despite cache failure
+        }
 
         return { checkoutUrl };
       } catch (err) {

@@ -12,7 +12,6 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import slugify from 'slugify';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class EventService {
@@ -29,10 +28,6 @@ export class EventService {
 
   private async findEventById(eventId: string) {
     const sanitizedEventId = this.sanitizeForCacheTag(eventId);
-    // Caching event lookup by ID
-    // - TTL: 5 minutes to reduce DB load for frequent event checks in ticket purchase flow
-    // - SWR: 1 minute to serve cached data quickly while refreshing for near-real-time updates
-    // - Tags: `event_${sanitizedEventId}` for granular invalidation, `events` for list invalidation
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -159,14 +154,11 @@ export class EventService {
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P6003'
-      ) {
-        this.logger.error('Cache invalidation rate limit reached:', e.message);
-      } else {
-        throw e;
-      }
+      this.logger.error(
+        `Cache invalidation failed for event ${eventId}: ${e.message}`,
+        e.stack,
+      );
+      // Do not rethrow; allow operation to proceed
     }
   }
 
@@ -188,10 +180,11 @@ export class EventService {
       throw new BadRequestException('At least one ticket category is required');
     }
 
-    const bannerUrl = await this.uploadBannerIfProvided(file);
-    const slug = await this.generateUniqueSlug(dto.name);
-
+    let bannerUrl: string | undefined;
     try {
+      bannerUrl = await this.uploadBannerIfProvided(file);
+      const slug = await this.generateUniqueSlug(dto.name);
+
       const event = await this.prisma.event.create({
         data: {
           name: dto.name,
@@ -226,12 +219,15 @@ export class EventService {
         },
       });
 
-      // Invalidate global events cache to ensure new event appears in listings
+      // Invalidate cache to ensure new event appears in listings
       await this.invalidateEventCache(event.id, event.slug);
       this.logger.log(`Event created with ID: ${event.id}`);
       return event;
     } catch (err) {
       this.logger.error(`Error creating event: ${err.message}`, err.stack);
+      if (bannerUrl) {
+        await this.deleteBannerIfExists(bannerUrl);
+      }
       throw new InternalServerErrorException('Failed to create event');
     }
   }
@@ -246,81 +242,92 @@ export class EventService {
     this.validateOwnership(event, userId);
 
     let bannerUrl: string | undefined;
-    if (file) {
-      bannerUrl = await this.uploadBannerIfProvided(file);
-      if (event.bannerUrl && bannerUrl !== event.bannerUrl) {
-        await this.deleteBannerIfExists(event.bannerUrl);
-      }
-    } else {
-      bannerUrl = event.bannerUrl ?? undefined;
-    }
-
-    const data: any = {
-      name: dto.name || event.name,
-      description: dto.description ?? event.description,
-      location: dto.location || event.location,
-      date: dto.date || event.date,
-      category: dto.category || event.category,
-      bannerUrl,
-    };
-
-    if (dto.ticketCategories) {
-      for (const category of dto.ticketCategories) {
-        const existingCategory = event.ticketCategories.find(
-          (cat) => cat.id === category.id || cat.name === category.name,
-        );
-        if (!existingCategory) {
-          throw new BadRequestException(
-            `Ticket category with ID ${category.id || 'unknown'} or name ${category.name || 'unknown'} does not exist`,
-          );
+    try {
+      if (file) {
+        bannerUrl = await this.uploadBannerIfProvided(file);
+        if (event.bannerUrl && bannerUrl !== event.bannerUrl) {
+          await this.deleteBannerIfExists(event.bannerUrl);
         }
-        if (
-          category.maxTickets !== undefined &&
-          existingCategory.minted > category.maxTickets
-        ) {
-          throw new BadRequestException(
-            `Cannot reduce maxTickets for category ${existingCategory.name} below minted tickets (${existingCategory.minted})`,
-          );
-        }
+      } else {
+        bannerUrl = event.bannerUrl ?? undefined;
       }
 
-      data.ticketCategories = {
-        update: dto.ticketCategories.map((category) => ({
-          where: {
-            id:
-              category.id ||
-              event.ticketCategories.find((cat) => cat.name === category.name)
-                ?.id,
-          },
-          data: {
-            price: Number(category.price),
-            maxTickets: Number(category.maxTickets),
-          },
-        })),
+      const data: any = {
+        name: dto.name || event.name,
+        description: dto.description ?? event.description,
+        location: dto.location || event.location,
+        date: dto.date || event.date,
+        category: dto.category || event.category,
+        bannerUrl,
       };
+
+      if (dto.ticketCategories) {
+        for (const category of dto.ticketCategories) {
+          const existingCategory = event.ticketCategories.find(
+            (cat) => cat.id === category.id || cat.name === category.name,
+          );
+          if (!existingCategory) {
+            throw new BadRequestException(
+              `Ticket category with ID ${category.id || 'unknown'} or name ${category.name || 'unknown'} does not exist`,
+            );
+          }
+          if (
+            category.maxTickets !== undefined &&
+            existingCategory.minted > category.maxTickets
+          ) {
+            throw new BadRequestException(
+              `Cannot reduce maxTickets for category ${existingCategory.name} below minted tickets (${existingCategory.minted})`,
+            );
+          }
+        }
+
+        data.ticketCategories = {
+          update: dto.ticketCategories.map((category) => ({
+            where: {
+              id:
+                category.id ||
+                event.ticketCategories.find((cat) => cat.name === category.name)
+                  ?.id,
+            },
+            data: {
+              price: Number(category.price),
+              maxTickets: Number(category.maxTickets),
+            },
+          })),
+        };
+      }
+
+      const updatedEvent = await this.prisma.event.update({
+        where: { id: eventId },
+        data,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          organizerId: true,
+          location: true,
+          date: true,
+          category: true,
+          isActive: true,
+          bannerUrl: true,
+          ticketCategories: true,
+        },
+      });
+
+      // Invalidate cache to reflect updated event data
+      await this.invalidateEventCache(eventId, updatedEvent.slug);
+      return updatedEvent;
+    } catch (err) {
+      this.logger.error(
+        `Error updating event ${eventId}: ${err.message}`,
+        err.stack,
+      );
+      if (bannerUrl && bannerUrl !== event.bannerUrl) {
+        await this.deleteBannerIfExists(bannerUrl);
+      }
+      throw err;
     }
-
-    const updatedEvent = await this.prisma.event.update({
-      where: { id: eventId },
-      data,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        organizerId: true,
-        location: true,
-        date: true,
-        category: true,
-        isActive: true,
-        bannerUrl: true,
-        ticketCategories: true,
-      },
-    });
-
-    // Invalidate cache to reflect updated event data in ticket purchase flow
-    await this.invalidateEventCache(eventId, updatedEvent.slug);
-    return updatedEvent;
   }
 
   // Status Management
@@ -328,15 +335,23 @@ export class EventService {
     const event = await this.findEventById(id);
     this.validateOwnership(event, userId);
 
-    const updatedEvent = await this.prisma.event.update({
-      where: { id },
-      data: { isActive },
-      select: { id: true, isActive: true, slug: true },
-    });
+    try {
+      const updatedEvent = await this.prisma.event.update({
+        where: { id },
+        data: { isActive },
+        select: { id: true, isActive: true, slug: true },
+      });
 
-    // Invalidate cache to reflect status change (affects ticket purchase eligibility)
-    await this.invalidateEventCache(id, updatedEvent.slug);
-    return updatedEvent;
+      // Invalidate cache to reflect status change
+      await this.invalidateEventCache(id, updatedEvent.slug);
+      return updatedEvent;
+    } catch (err) {
+      this.logger.error(
+        `Error toggling event status for ${id}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
   }
 
   // Deletion
@@ -344,21 +359,26 @@ export class EventService {
     const event = await this.findEventById(id);
     this.validateOwnership(event, userId);
     await this.checkIfTicketsExist(id);
-    await this.deleteBannerIfExists(event.bannerUrl!);
 
-    await this.prisma.event.delete({ where: { id } });
+    try {
+      await this.deleteBannerIfExists(event.bannerUrl!);
+      await this.prisma.event.delete({ where: { id } });
 
-    // Invalidate cache to remove deleted event from listings
-    await this.invalidateEventCache(id, event.slug);
-    return { message: 'Event deleted successfully', eventId: id };
+      // Invalidate cache to remove deleted event
+      await this.invalidateEventCache(id, event.slug);
+      return { message: 'Event deleted successfully', eventId: id };
+    } catch (err) {
+      this.logger.error(
+        `Error deleting event ${id}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
   }
 
   // Queries
   async getOrganizerEvents(userId: string) {
     const sanitizedUserId = this.sanitizeForCacheTag(userId);
-    // Caching organizer events
-    // - Used for organizer dashboard to show their events
-    // - TTL/SWR for fast response and reduced DB load
     const events = await this.prisma.event.findMany({
       where: { organizerId: userId },
       select: {
@@ -390,8 +410,6 @@ export class EventService {
 
   async getSingleEvent(eventId: string) {
     const sanitizedEventId = this.sanitizeForCacheTag(eventId);
-    // Caching single event query
-    // - Used in ticket purchase flow for event details page
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -436,8 +454,6 @@ export class EventService {
   }
 
   async getAllEvents() {
-    // Caching all active events
-    // - Used in public event listings for ticket browsing
     return this.prisma.event.findMany({
       where: { isActive: true },
       select: {
@@ -480,8 +496,6 @@ export class EventService {
     from?: string;
     to?: string;
   }) {
-    // Caching filtered event queries
-    // - Used for search functionality in ticket browsing
     const filters: any = { isActive: true };
 
     if (query.name) {
@@ -520,8 +534,6 @@ export class EventService {
 
   async getUserEvents(userId: string) {
     const sanitizedUserId = this.sanitizeForCacheTag(userId);
-    // Caching user-specific ticket queries
-    // - Used in ticket purchase history or resale flow
     const tickets = await this.prisma.ticket.findMany({
       where: { userId },
       select: {
@@ -576,8 +588,6 @@ export class EventService {
   }
 
   async getUpcomingEvents() {
-    // Caching upcoming events
-    // - Used in ticket browsing for future events
     return this.prisma.event.findMany({
       where: {
         isActive: true,
@@ -605,8 +615,6 @@ export class EventService {
   }
 
   async getPastEvents() {
-    // Caching past events
-    // - Less critical but cached for consistency
     return this.prisma.event.findMany({
       where: {
         isActive: true,
