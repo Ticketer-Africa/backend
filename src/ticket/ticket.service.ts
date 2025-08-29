@@ -715,7 +715,9 @@ export class TicketService {
         userId: true,
         resalePrice: true,
         listedAt: true,
-        event: { select: { name: true, date: true, isActive: true } },
+        event: {
+          select: { name: true, date: true, isActive: true, bannerUrl: true },
+        },
         user: {
           select: { id: true, name: true, email: true, profileImage: true },
         },

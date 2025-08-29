@@ -45,7 +45,7 @@ export class EventService {
       },
       cacheStrategy: {
         ttl: 300, // 5 minutes
-        swr: 60,  // 1 minute
+        swr: 60, // 1 minute
         tags: [`event_${eventId}`, 'events'],
       },
     });
@@ -54,9 +54,9 @@ export class EventService {
   }
 
   private async findEventBySlug(slug: string) {
-    // Caching event lookup by slug
-    // - Used in public event pages (e.g., ticket browsing)
-    // - Same TTL/SWR strategy as findEventById
+    // Sanitize slug for cache tag: replace non-alphanumeric characters with underscores
+    const sanitizedSlug = slug.replace(/[^a-zA-Z0-9]/g, '_');
+
     const event = await this.prisma.event.findUnique({
       where: { slug },
       select: {
@@ -76,7 +76,7 @@ export class EventService {
       cacheStrategy: {
         ttl: 300,
         swr: 60,
-        tags: [`event_${slug}`, 'events'],
+        tags: [`event_${sanitizedSlug}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -122,7 +122,9 @@ export class EventService {
     try {
       await this.cloudinary.deleteImage(bannerUrl);
     } catch (err) {
-      this.logger.warn(`Failed to delete banner from Cloudinary: ${err.message}`);
+      this.logger.warn(
+        `Failed to delete banner from Cloudinary: ${err.message}`,
+      );
     }
   }
 
@@ -143,14 +145,19 @@ export class EventService {
   }
 
   private async invalidateEventCache(eventId: string, slug?: string) {
-    // Invalidate cache for event by ID and slug, plus global events tag
-    // - Ensures ticket purchase flow sees fresh event data after mutations
     const tags = [`event_${eventId}`, 'events'];
-    if (slug) tags.push(`event_${slug}`);
+    if (slug) {
+      const sanitizedSlug = slug.replace(/[^a-zA-Z0-9]/g, '_');
+      tags.push(`event_${sanitizedSlug}`);
+    }
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P6003') {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P6003'
+      ) {
         this.logger.error('Cache invalidation rate limit reached:', e.message);
       } else {
         throw e;
