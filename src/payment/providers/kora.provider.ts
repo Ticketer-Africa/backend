@@ -32,8 +32,7 @@ export class KoraPayinProvider implements IPayinProvider {
 
   async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
     // Convert amount to kobo for NGN
-    const amount =
-      dto.currency === 'NGN' ? Math.round(dto.amount) : dto.amount;
+    const amount = dto.currency === 'NGN' ? Math.round(dto.amount) : dto.amount;
 
     // Filter supported channels, use defaults if none provided
     const channels =

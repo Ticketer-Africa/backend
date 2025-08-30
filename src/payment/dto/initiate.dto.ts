@@ -9,6 +9,7 @@ export interface PaymentDTO {
   redirectUrl?: string;
   notificationUrl?: string;
   narration?: string;
+  processor?: string;
   channels?: string[];
   defaultChannel?: string;
   metadata?: Record<string, any>;
