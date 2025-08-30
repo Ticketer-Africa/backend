@@ -6,8 +6,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PaymentService } from 'src/payment/payment.service';
-import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class WalletService {
@@ -130,6 +130,7 @@ export class WalletService {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async setWalletPin(
     userId: string,
     payload: { oldPin?: string; newPin: string },
@@ -174,9 +175,7 @@ export class WalletService {
 
   async getTransactions(organizerId: string) {
     const user = await this.validateOrganizer(organizerId);
-
     const eventIds = user.events.map((event) => event.id);
-
     const transactions = await this.prisma.transaction.findMany({
       where: {
         OR: [
@@ -192,13 +191,7 @@ export class WalletService {
           },
         ],
       },
-      select: {
-        id: true,
-        reference: true,
-        amount: true,
-        type: true,
-        status: true,
-        createdAt: true,
+      include: {
         user: { select: { id: true, name: true, email: true } },
         event: { select: { id: true, name: true, resaleFeeBps: true } },
         tickets: {
@@ -216,18 +209,18 @@ export class WalletService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return transactions.map((tx) => ({
+    return transactions.map((tx: any) => ({
       id: tx.id,
       reference: tx.reference,
       type: tx.type,
       amount:
-        tx.type === 'RESALE'
-          ? Math.round((tx.amount * (tx.event?.resaleFeeBps ?? 500)) / 10000)
+        tx.type === 'RESALE' && tx.event
+          ? Math.round((tx.amount * (tx.event.resaleFeeBps ?? 500)) / 10000)
           : tx.amount,
       status: tx.status,
       createdAt: tx.createdAt,
       buyer: tx.type !== 'WITHDRAW' ? tx.user : null,
-      event: tx.event ?? null,
+      event: tx.event,
       tickets: tx.tickets.map((t) => ({
         id: t.ticket.id,
         code: t.ticket.code,

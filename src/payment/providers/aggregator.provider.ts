@@ -31,11 +31,17 @@ export class AggregatorPayinProvider implements IPayinProvider {
       currency: dto.currency,
       reference: dto.reference,
       customer: dto.customer,
+<<<<<<< HEAD
       processor: 'kora',
       redirect_url: dto.redirectUrl,
       notification_url: dto.notificationUrl,
       narration: dto.narration,
       mode: 'card',
+=======
+      redirect_url: dto.redirectUrl,
+      notification_url: dto.notificationUrl,
+      narration: dto.narration,
+>>>>>>> fc38963499aa79c263d995d743d8042583e4dc49
       metadata: sanitizeMetadata(dto.metadata),
     };
 

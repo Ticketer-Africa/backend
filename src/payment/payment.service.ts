@@ -9,30 +9,65 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailService } from 'src/mail/mail.service';
-import { InitiateDto } from './dto/initiate.dto';
 import { randomBytes } from 'crypto';
 import { generateVerificationCode } from 'src/common/utils/qrCode.utils';
+import {
+  PaymentDTO,
+  PayinResponse,
+  validateDTO,
+  generateReference,
+} from './dto/initiate.dto';
+import { IPayinProvider } from './interface/payin-provider.interface';
+import { KoraPayinProvider } from './providers/kora.provider';
+import { AggregatorPayinProvider } from './providers/aggregator.provider';
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly paymentBaseUrl = process.env.PAYMENT_GATEWAY_URL;
-  private readonly paymentSecretKey = process.env.PAYMENT_GATEWAY_TEST_SECRET;
+  private readonly providers: Map<string, IPayinProvider> = new Map();
 
   constructor(
     private httpService: HttpService,
     private prisma: PrismaService,
     private mailService: MailService,
-  ) {}
+    private koraProvider: KoraPayinProvider,
+    private aggregatorProvider: AggregatorPayinProvider,
+  ) {
+    this.providers.set('kora', this.koraProvider);
+    this.providers.set('aggregator', this.aggregatorProvider);
+  }
 
-  // Private Helpers
+  async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
+    if (!dto.reference) {
+      dto.reference = generateReference();
+    }
+    validateDTO(dto);
+
+    const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const providerInstance = this.providers.get(selectedProvider);
+    if (!providerInstance) {
+      throw new BadRequestException(
+        `Unsupported provider: ${selectedProvider}`,
+      );
+    }
+
+    this.logger.log(
+      `Routing payin initiation to provider: ${selectedProvider}`,
+    );
+    return providerInstance.initiatePayin(dto);
+  }
+
+  private sanitizeForCacheTag(value: string): string {
+    return value.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
   private async callPaymentGateway<T>(
     method: 'get' | 'post',
     url: string,
     data?: any,
   ): Promise<T> {
     const headers = {
-      Authorization: `Bearer ${this.paymentSecretKey}`,
+      Authorization: `Bearer ${process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
       'Content-Type': 'application/json',
     };
 
@@ -73,18 +108,50 @@ export class PaymentService {
       throw new InternalServerErrorException('Payment gateway request failed');
     }
   }
-  sss;
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async findAndLockTransaction(reference: string) {
+    const sanitizedReference = this.sanitizeForCacheTag(reference);
     return this.prisma.$transaction(async (tx) => {
       const txn = await tx.transaction.findUnique({
         where: { reference },
-        include: {
-          event: { include: { organizer: true, ticketCategories: true } },
-          tickets: {
-            include: { ticket: { include: { ticketCategory: true } } },
+        select: {
+          reference: true,
+          userId: true,
+          eventId: true,
+          amount: true,
+          type: true,
+          status: true,
+          event: {
+            select: {
+              id: true,
+              name: true,
+              organizerId: true,
+              primaryFeeBps: true,
+              resaleFeeBps: true,
+              royaltyFeeBps: true,
+              ticketCategories: true,
+            },
           },
-          user: true,
+          tickets: {
+            select: {
+              ticket: {
+                select: {
+                  id: true,
+                  ticketCategoryId: true,
+                  code: true,
+                  userId: true,
+                  ticketCategory: true,
+                },
+              },
+            },
+          },
+          user: { select: { id: true, email: true, name: true } },
+        },
+        cacheStrategy: {
+          ttl: 60,
+          swr: 30,
+          tags: [`transaction_${sanitizedReference}`],
         },
       });
       if (!txn) throw new NotFoundException('Transaction not found');
@@ -97,6 +164,8 @@ export class PaymentService {
         where: { reference },
         data: { status: 'SUCCESS' },
       });
+
+      await this.invalidateTransactionCache(reference);
       return { alreadyProcessed: false, txn };
     });
   }
@@ -109,13 +178,16 @@ export class PaymentService {
       where: { id: ticketCategoryId },
       data: { minted: { increment: ticketCount } },
     });
+    await this.invalidateTicketCategoryCache(ticketCategoryId);
   }
 
   private async updateWalletBalance(userId: string, amount: number) {
     await this.prisma.wallet.update({
       where: { userId },
       data: { balance: { increment: amount } },
+      select: { userId: true, balance: true },
     });
+    await this.invalidateWalletCache(userId);
   }
 
   private async upsertPlatformAdminWallet(adminId: string, amount: number) {
@@ -123,7 +195,9 @@ export class PaymentService {
       where: { userId: adminId },
       create: { userId: adminId, balance: amount },
       update: { balance: { increment: amount } },
+      select: { userId: true, balance: true },
     });
+    await this.invalidateWalletCache(adminId);
   }
 
   private async createTicketsForPurchase(
@@ -140,9 +214,11 @@ export class PaymentService {
           ticketCategoryId,
           code: await this.generateUniqueTicketCode(),
         },
+        select: { id: true },
       });
       ticketIds.push(ticket.id);
     }
+    await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
     return ticketIds;
   }
 
@@ -158,6 +234,77 @@ export class PaymentService {
         },
       },
     });
+    await this.invalidateTransactionCache(reference);
+  }
+
+  private async invalidateTransactionCache(reference: string) {
+    const sanitizedReference = this.sanitizeForCacheTag(reference);
+    const tags = [`transaction_${sanitizedReference}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      this.logger.error(
+        `Cache invalidation failed for transaction ${reference}: ${e.message}`,
+        e.stack,
+      );
+    }
+  }
+
+  private async invalidateTicketCategoryCache(ticketCategoryId: string) {
+    const sanitizedTicketCategoryId =
+      this.sanitizeForCacheTag(ticketCategoryId);
+    const tags = [`ticket_category_${sanitizedTicketCategoryId}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      this.logger.error(
+        `Cache invalidation failed for ticket category ${ticketCategoryId}: ${e.message}`,
+        e.stack,
+      );
+    }
+  }
+
+  private async invalidateWalletCache(userId: string) {
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
+    const tags = [`wallet_${sanitizedUserId}`];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      this.logger.error(
+        `Cache invalidation failed for wallet ${userId}: ${e.message}`,
+        e.stack,
+      );
+    }
+  }
+
+  private async invalidateTicketCache(
+    ticketIds: string[],
+    eventId: string,
+    userId: string,
+  ) {
+    const sanitizedTicketIds = ticketIds.map((id) =>
+      this.sanitizeForCacheTag(id),
+    );
+    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
+    const sanitizedUserId = this.sanitizeForCacheTag(userId);
+    const tags = [
+      ...sanitizedTicketIds.map((id) => `ticket_${id}`),
+      `resale_tickets_${sanitizedEventId}`,
+      `user_tickets_${sanitizedUserId}`,
+      'tickets',
+    ];
+    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    try {
+      await this.prisma.$accelerate.invalidate({ tags });
+    } catch (e) {
+      this.logger.error(
+        `Cache invalidation failed for tickets ${ticketIds.join(', ')}: ${e.message}`,
+        e.stack,
+      );
+    }
   }
 
   private generateTicketDetails(
@@ -165,7 +312,7 @@ export class PaymentService {
     eventId: string,
     userId: string,
   ) {
-    const ticketDetails = tickets.map((ticket) => {
+    return tickets.map((ticket) => {
       if (!ticket.code)
         throw new BadRequestException(`Ticket ${ticket.id} missing code`);
       return {
@@ -186,11 +333,9 @@ export class PaymentService {
         },
       };
     });
-
-    return ticketDetails;
   }
 
-  private async sendPurchaseEmails(
+  async sendPurchaseEmails(
     txn: any,
     ticketDetails: any[],
     platformCut: number,
@@ -198,6 +343,14 @@ export class PaymentService {
     try {
       const platformAdmin = await this.prisma.user.findUnique({
         where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
       });
 
       await Promise.all([
@@ -244,14 +397,25 @@ export class PaymentService {
 
     const tickets = await this.prisma.ticket.findMany({
       where: { id: { in: ticketIds } },
-      include: { ticketCategory: true },
+      select: {
+        id: true,
+        code: true,
+        ticketCategoryId: true,
+        ticketCategory: { select: { name: true } },
+      },
+      cacheStrategy: {
+        ttl: 60,
+        swr: 30,
+        tags: ticketIds
+          .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
+          .concat(['tickets']),
+      },
     });
 
     if (tickets.length !== ticketIds.length) {
       throw new NotFoundException('One or more tickets not found');
     }
 
-    // Group tickets by category
     const ticketsByCategory = tickets.reduce(
       (acc, t) => {
         if (t.ticketCategoryId == null) {
@@ -266,46 +430,66 @@ export class PaymentService {
       {} as Record<string, any[]>,
     );
 
-    for (const [categoryId, ticketsInCat] of Object.entries(
-      ticketsByCategory,
-    )) {
-      const ticketCategory = await this.prisma.ticketCategory.findUnique({
-        where: { id: categoryId },
-      });
-      if (!ticketCategory) {
-        throw new NotFoundException(`Ticket category ${categoryId} not found`);
+    try {
+      for (const [categoryId, ticketsInCat] of Object.entries(
+        ticketsByCategory,
+      )) {
+        const ticketCategory = await this.prisma.ticketCategory.findUnique({
+          where: { id: categoryId },
+          select: { id: true, name: true, minted: true, maxTickets: true },
+          cacheStrategy: {
+            ttl: 60,
+            swr: 30,
+            tags: [`ticket_category_${this.sanitizeForCacheTag(categoryId)}`],
+          },
+        });
+        if (!ticketCategory) {
+          throw new NotFoundException(
+            `Ticket category ${categoryId} not found`,
+          );
+        }
+
+        await this.updateTicketCategoryMintedCount(
+          categoryId,
+          ticketsInCat.length,
+        );
       }
 
-      await this.updateTicketCategoryMintedCount(
-        categoryId,
-        ticketsInCat.length,
+      const platformCut = Math.floor(
+        (txn.amount * txn.event.primaryFeeBps) / 10000,
       );
+      const organizerProceeds = txn.amount - platformCut;
 
-      // ⚠️ If organizer revenue split differs per category,
-      // calculate proceeds per ticketsInCat here instead of globally
+      await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
+
+      const platformAdmin = await this.prisma.user.findUnique({
+        where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
+      });
+      if (platformAdmin) {
+        await this.upsertPlatformAdminWallet(platformAdmin.id, platformCut);
+      }
+
+      await this.sendPurchaseEmails(
+        txn,
+        this.generateTicketDetails(tickets, txn.eventId, txn.userId),
+        platformCut,
+      );
+      await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to process purchase flow for transaction ${txn.reference}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
     }
-
-    const platformCut = Math.floor(
-      (txn.amount * txn.event.primaryFeeBps) / 10000,
-    );
-    const organizerProceeds = txn.amount - platformCut;
-
-    await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
-
-    const platformAdmin = await this.prisma.user.findUnique({
-      where: { email: process.env.ADMIN_EMAIL },
-    });
-    if (platformAdmin) {
-      await this.upsertPlatformAdminWallet(platformAdmin.id, platformCut);
-    }
-
-    const ticketDetails = this.generateTicketDetails(
-      tickets,
-      txn.eventId,
-      txn.userId,
-    );
-
-    await this.sendPurchaseEmails(txn, ticketDetails, platformCut);
 
     return ticketIds;
   }
@@ -320,9 +504,25 @@ export class PaymentService {
     try {
       const platformAdmin = await this.prisma.user.findUnique({
         where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
       });
       const organizer = await this.prisma.user.findUnique({
         where: { id: tickets[0].event.organizerId },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(tickets[0].event.organizerId)}`,
+          ],
+        },
       });
       const seller = tickets[0].user;
 
@@ -375,7 +575,33 @@ export class PaymentService {
 
     const tickets = await this.prisma.ticket.findMany({
       where: { id: { in: ticketIds } },
-      include: { event: true, user: true, ticketCategory: true },
+      select: {
+        id: true,
+        code: true,
+        userId: true,
+        eventId: true,
+        resalePrice: true,
+        accountNumber: true,
+        bankCode: true,
+        event: {
+          select: {
+            id: true,
+            name: true,
+            organizerId: true,
+            resaleFeeBps: true,
+            royaltyFeeBps: true,
+          },
+        },
+        user: { select: { id: true, email: true, name: true } },
+        ticketCategory: { select: { name: true } },
+      },
+      cacheStrategy: {
+        ttl: 60,
+        swr: 30,
+        tags: ticketIds
+          .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
+          .concat(['tickets']),
+      },
     });
     if (tickets.length !== ticketIds.length)
       throw new NotFoundException('One or more tickets not found');
@@ -387,111 +613,101 @@ export class PaymentService {
     let totalOrganizerRoyalty = 0;
     let totalSellerProceeds = 0;
 
-    for (const ticket of tickets) {
-      const seller = ticket.user;
-      if (!seller)
-        throw new NotFoundException(`Seller not found for ticket ${ticket.id}`);
+    try {
+      for (const ticket of tickets) {
+        const seller = ticket.user;
+        if (!seller)
+          throw new NotFoundException(
+            `Seller not found for ticket ${ticket.id}`,
+          );
 
-      if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} is missing resale price or payout info`,
+        if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
+          throw new BadRequestException(
+            `Ticket ${ticket.id} is missing resale price or payout info`,
+          );
+        }
+
+        const platformCut = Math.floor(
+          (ticket.resalePrice * event.resaleFeeBps) / 10000,
+        );
+        const organizerRoyalty = Math.floor(
+          (ticket.resalePrice * event.royaltyFeeBps) / 10000,
+        );
+        const sellerProceeds =
+          ticket.resalePrice - (platformCut + organizerRoyalty);
+
+        totalPlatformCut += platformCut;
+        totalOrganizerRoyalty += organizerRoyalty;
+        totalSellerProceeds += sellerProceeds;
+
+        const newCode = await this.generateUniqueTicketCode();
+        await this.prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            userId: txn.userId,
+            isListed: false,
+            code: newCode,
+            resalePrice: null,
+            resaleCount: { increment: 1 },
+            resaleCommission: platformCut + organizerRoyalty,
+            soldTo: txn.userId,
+          },
+        });
+
+        await this.initiateWithdrawal({
+          customer: { email: seller.email, name: seller.name },
+          amount: sellerProceeds,
+          currency: 'NGN',
+          destination: {
+            account_number:
+              process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
+            bank_code: process.env.TEST_BANK_CODE || ticket.bankCode,
+          },
+          reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          notification_url: process.env.NOTIFICATION_URL,
+          narration: `Resale payout for ticket ${ticket.id}`,
+          metadata: { userId: ticket.userId },
+        });
+      }
+
+      await this.updateWalletBalance(event.organizerId, totalOrganizerRoyalty);
+
+      const platformAdmin = await this.prisma.user.findUnique({
+        where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
+        cacheStrategy: {
+          ttl: 300,
+          swr: 60,
+          tags: [
+            `user_${this.sanitizeForCacheTag(process.env.ADMIN_EMAIL || '')}`,
+          ],
+        },
+      });
+      if (platformAdmin) {
+        await this.upsertPlatformAdminWallet(
+          platformAdmin.id,
+          totalPlatformCut,
         );
       }
 
-      const platformCut = Math.floor(
-        (ticket.resalePrice * event.resaleFeeBps) / 10000,
+      await this.sendResaleEmails(
+        txn,
+        tickets,
+        totalPlatformCut,
+        totalOrganizerRoyalty,
+        totalSellerProceeds,
       );
-      const organizerRoyalty = Math.floor(
-        (ticket.resalePrice * event.royaltyFeeBps) / 10000,
+
+      await this.invalidateTicketCache(ticketIds, event.id, txn.userId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to process resale flow for transaction ${txn.reference}: ${err.message}`,
+        err.stack,
       );
-      const sellerProceeds =
-        ticket.resalePrice - (platformCut + organizerRoyalty);
-
-      totalPlatformCut += platformCut;
-      totalOrganizerRoyalty += organizerRoyalty;
-      totalSellerProceeds += sellerProceeds;
-
-      const newCode = await this.generateUniqueTicketCode();
-      await this.prisma.ticket.update({
-        where: { id: ticket.id },
-        data: {
-          userId: txn.userId,
-          isListed: false,
-          code: newCode,
-          resalePrice: null,
-          resaleCount: { increment: 1 },
-          resaleCommission: platformCut + organizerRoyalty,
-          soldTo: txn.userId,
-        },
-      });
-
-      await this.initiateWithdrawal({
-        customer: { email: seller.email, name: seller.name },
-        amount: sellerProceeds,
-        currency: 'NGN',
-        destination: {
-          account_number: process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
-          bank_code: process.env.TEST_BANK_CODE || ticket.bankCode,
-        },
-        reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        notification_url: process.env.NOTIFICATION_URL,
-        narration: `Resale payout for ticket ${ticket.id}`,
-        metadata: { userId: ticket.userId },
-      });
+      throw err;
     }
-
-    await this.updateWalletBalance(event.organizerId, totalOrganizerRoyalty);
-
-    const platformAdmin = await this.prisma.user.findUnique({
-      where: { email: process.env.ADMIN_EMAIL },
-    });
-    if (platformAdmin) {
-      await this.upsertPlatformAdminWallet(platformAdmin.id, totalPlatformCut);
-    }
-
-    await this.sendResaleEmails(
-      txn,
-      tickets,
-      totalPlatformCut,
-      totalOrganizerRoyalty,
-      totalSellerProceeds,
-    );
 
     return ticketIds;
-  }
-
-  // Payment Initiation
-  async initiatePayment(data: InitiateDto): Promise<string> {
-    this.logger.log(
-      `💡 Sending payment initiation request to gateway:\n${JSON.stringify(data, null, 2)}`,
-    );
-
-    let response;
-    try {
-      response = await this.callPaymentGateway<{ checkout_url?: string }>(
-        'post',
-        `${this.paymentBaseUrl}/api/v1/initiate`,
-        data,
-      );
-    } catch (error) {
-      this.logger.error(
-        `❌ Payment gateway request failed:\n${JSON.stringify(error.response?.data, null, 2)}\n${error.stack}`,
-      );
-      throw new InternalServerErrorException(
-        error?.response?.data?.message || 'Payment gateway request failed',
-      );
-    }
-
-    this.logger.log(
-      `💳 Payment gateway response:\n${JSON.stringify(response, null, 2)}`,
-    );
-
-    if (!response.checkout_url) {
-      this.logger.error('❌ Payment gateway did not return a checkout_url');
-      throw new BadRequestException('Failed to initiate payment');
-    }
-
-    return response.checkout_url;
   }
 
   async initiateWithdrawal(data: any): Promise<any> {
@@ -500,41 +716,40 @@ export class PaymentService {
     );
     const response = await this.callPaymentGateway(
       'post',
-      `${this.paymentBaseUrl}/api/v1/payout`,
+      `${process.env.PAYMENT_GATEWAY_URL}/api/v1/payout`,
       data,
     );
     return response ?? null;
   }
 
-  //Fetch bank codes
   async fetchBankCodes() {
-  try {
-    const response = await this.httpService.axiosRef.get(
-      process.env.BANK_CODES_URL!,
-    );
-    return response.data;
-  } catch (error) {
-    this.logger.error(
-      `❌ Failed to fetch bank codes: ${error.message}`,
-      error.stack,
-    );
-    throw new InternalServerErrorException('Failed to fetch bank codes');
+    try {
+      const response = await this.httpService.axiosRef.get(
+        process.env.BANK_CODES_URL!,
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to fetch bank codes: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException('Failed to fetch bank codes');
+    }
   }
-}
 
-
-  // Transaction Verification
   async verifyTransaction(reference: string) {
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
-    const verifyUrl = `${this.paymentBaseUrl}/api/v1/transactions/verify?reference=${reference}`;
+    const verifyUrl = `${process.env.PAYMENT_GATEWAY_URL}/api/v1/transactions/verify?reference=${reference}`;
 
     this.logger.log(`🌐 Verify URL: ${verifyUrl}`);
-    this.logger.log(`🔑 Secret key defined: ${!!this.paymentSecretKey}`);
-    if (!this.paymentSecretKey) {
+    this.logger.log(
+      `🔑 Secret key defined: ${!!process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
+    );
+    if (!process.env.PAYMENT_GATEWAY_TEST_SECRET) {
       this.logger.error(`❌ Payment secret key is missing in environment`);
     }
-    if (!this.paymentBaseUrl) {
+    if (!process.env.PAYMENT_GATEWAY_URL) {
       this.logger.error(`❌ Payment base URL is missing in environment`);
     }
 
@@ -586,28 +801,35 @@ export class PaymentService {
       `🎟️ Tickets linked to transaction ${reference}: ${JSON.stringify(ticketIds)}`,
     );
 
-    if (txn.type === 'PURCHASE') {
-      this.logger.log(`🛒 Processing purchase flow for txn ${reference}`);
-      await this.processPurchaseFlow(txn, ticketIds);
-    } else if (txn.type === 'RESALE') {
-      this.logger.log(`♻️ Processing resale flow for txn ${reference}`);
-      await this.processResaleFlow(txn, ticketIds);
-    } else {
-      this.logger.error(`❌ Invalid transaction type: ${txn.type}`);
-      throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
+    try {
+      if (txn.type === 'PURCHASE') {
+        this.logger.log(`🛒 Processing purchase flow for txn ${reference}`);
+        await this.processPurchaseFlow(txn, ticketIds);
+      } else if (txn.type === 'RESALE') {
+        this.logger.log(`♻️ Processing resale flow for txn ${reference}`);
+        await this.processResaleFlow(txn, ticketIds);
+      } else {
+        this.logger.error(`❌ Invalid transaction type: ${txn.type}`);
+        throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
+      }
+
+      this.logger.log(
+        `🎉 Transaction ${reference} verified and processed successfully`,
+      );
+
+      return {
+        message: 'Transaction verified and processed successfully',
+        ticketIds,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Failed to verify transaction ${reference}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
     }
-
-    this.logger.log(
-      `🎉 Transaction ${reference} verified and processed successfully`,
-    );
-
-    return {
-      message: 'Transaction verified and processed successfully',
-      ticketIds,
-    };
   }
 
-  // Ticket Code Generation
   private generateTicketCode(): string {
     const randomPart = randomBytes(5).toString('hex').toUpperCase();
     return `TCK-${randomPart}`;
