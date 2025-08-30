@@ -12,6 +12,7 @@ import { ListResaleDto } from './dto/list-resale.dto';
 import { BuyResaleDto } from './dto/buy-resale.dto';
 import { RemoveResaleDto } from './dto/remove-resale.dto';
 import { TransactionStatus, TransactionType } from '@prisma/client';
+import { PayinResponse, PaymentDTO } from 'src/payment/dto/initiate.dto';
 
 @Injectable()
 export class TicketService {
@@ -155,43 +156,69 @@ export class TicketService {
     });
   }
 
-  private async initiatePayment(
-    user: any,
-    event: any,
+  async initiatePayment(
+    user: { id: string; email: string; name?: string },
+    event: { id: string; name: string },
     totalAmount: number,
     reference: string,
     ticketIds: string[],
     clientPage: string,
+    type: 'PURCHASE' | 'RESALE' = 'PURCHASE', // Optional parameter to distinguish purchase vs. resale
+    provider?: 'kora' | 'aggregator', // Optional provider override
   ): Promise<string> {
     const redirectUrl = process.env.FRONTEND_URL
       ? `${process.env.FRONTEND_URL}${clientPage}`
       : undefined;
 
-    const payload = {
-      customer: { email: user.email, name: user.name },
+    // Prepare PaymentDTO
+    const paymentDto: PaymentDTO = {
       amount: totalAmount,
       currency: 'NGN',
       reference,
-      processor: 'kora',
-      narration: `Tickets for ${event.name}`,
-      notification_url: process.env.NOTIFICATION_URL,
-      redirect_url: redirectUrl,
-      metadata: { userId: user.id },
+      customer: { email: user.email, name: user.name },
+      redirectUrl,
+      notificationUrl: process.env.NOTIFICATION_URL,
+      narration: `${type === 'PURCHASE' ? 'Ticket purchase' : 'Resale ticket purchase'} for ${event.name}`,
+      metadata: { userId: user.id, eventId: event.id, ticketIds, type },
     };
 
     this.logger.log(
-      `💳 Initiating payment with payload:\n${JSON.stringify(payload, null, 2)}`,
+      `💳 Initiating payment with payload:\n${JSON.stringify(paymentDto, null, 2)}`,
     );
 
-    const checkoutUrl = await this.paymentService.initiatePayment(payload);
+    // Call PaymentService.initiatePayin
+    let response: PayinResponse;
+    try {
+      response = await this.paymentService.initiatePayin(paymentDto, provider);
+    } catch (error) {
+      this.logger.error(`❌ Payment initiation failed: ${error.message}`);
+      throw new BadRequestException('Failed to initiate payment');
+    }
 
-    if (!checkoutUrl) {
+    if (!response.data.checkoutUrl) {
       this.logger.error('❌ Payment gateway returned no checkout URL');
       throw new BadRequestException('Failed to generate payment link');
     }
 
-    this.logger.log(`✅ Payment initiated, checkout URL: ${checkoutUrl}`);
-    return checkoutUrl;
+    // Store transaction in database
+    await this.prisma.transaction.create({
+      data: {
+        reference: response.data.reference,
+        userId: user.id,
+        eventId: event.id,
+        amount: totalAmount,
+        type,
+        status: 'PENDING',
+        tickets: {
+          create: ticketIds.map((id) => ({ ticket: { connect: { id } } })),
+        },
+      },
+    });
+
+    this.logger.log(
+      `✅ Payment initiated, checkout URL: ${response.data.checkoutUrl}`,
+    );
+    return response.data.checkoutUrl;
   }
 
   private async rollbackTransaction(reference: string, ticketIds: string[]) {

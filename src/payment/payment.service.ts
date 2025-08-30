@@ -9,23 +9,54 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailService } from 'src/mail/mail.service';
-import { InitiateDto } from './dto/initiate.dto';
 import { randomBytes } from 'crypto';
 import { generateVerificationCode } from 'src/common/utils/qrCode.utils';
+import {
+  PaymentDTO,
+  PayinResponse,
+  validateDTO,
+  generateReference,
+} from './dto/initiate.dto';
+import { IPayinProvider } from './interface/payin-provider.interface';
+import { KoraPayinProvider } from './providers/kora.provider';
+import { AggregatorPayinProvider } from './providers/aggregator.provider';
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly paymentBaseUrl = process.env.PAYMENT_GATEWAY_URL;
-  private readonly paymentSecretKey = process.env.PAYMENT_GATEWAY_TEST_SECRET;
+  private readonly providers: Map<string, IPayinProvider> = new Map();
 
   constructor(
     private httpService: HttpService,
     private prisma: PrismaService,
     private mailService: MailService,
-  ) {}
+    private koraProvider: KoraPayinProvider,
+    private aggregatorProvider: AggregatorPayinProvider,
+  ) {
+    this.providers.set('kora', this.koraProvider);
+    this.providers.set('aggregator', this.aggregatorProvider);
+  }
 
-  // Private Helpers
+  async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
+    if (!dto.reference) {
+      dto.reference = generateReference();
+    }
+    validateDTO(dto);
+
+    const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const providerInstance = this.providers.get(selectedProvider);
+    if (!providerInstance) {
+      throw new BadRequestException(
+        `Unsupported provider: ${selectedProvider}`,
+      );
+    }
+
+    this.logger.log(
+      `Routing payin initiation to provider: ${selectedProvider}`,
+    );
+    return providerInstance.initiatePayin(dto);
+  }
+
   private sanitizeForCacheTag(value: string): string {
     return value.replace(/[^a-zA-Z0-9]/g, '_');
   }
@@ -36,7 +67,7 @@ export class PaymentService {
     data?: any,
   ): Promise<T> {
     const headers = {
-      Authorization: `Bearer ${this.paymentSecretKey}`,
+      Authorization: `Bearer ${process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
       'Content-Type': 'application/json',
     };
 
@@ -134,7 +165,6 @@ export class PaymentService {
         data: { status: 'SUCCESS' },
       });
 
-      // Invalidate transaction cache after status update
       await this.invalidateTransactionCache(reference);
       return { alreadyProcessed: false, txn };
     });
@@ -148,7 +178,6 @@ export class PaymentService {
       where: { id: ticketCategoryId },
       data: { minted: { increment: ticketCount } },
     });
-    // Invalidate ticket category cache
     await this.invalidateTicketCategoryCache(ticketCategoryId);
   }
 
@@ -158,7 +187,6 @@ export class PaymentService {
       data: { balance: { increment: amount } },
       select: { userId: true, balance: true },
     });
-    // Invalidate wallet cache
     await this.invalidateWalletCache(userId);
   }
 
@@ -169,7 +197,6 @@ export class PaymentService {
       update: { balance: { increment: amount } },
       select: { userId: true, balance: true },
     });
-    // Invalidate admin wallet cache
     await this.invalidateWalletCache(adminId);
   }
 
@@ -191,7 +218,6 @@ export class PaymentService {
       });
       ticketIds.push(ticket.id);
     }
-    // Invalidate user ticket cache
     await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
     return ticketIds;
   }
@@ -208,7 +234,6 @@ export class PaymentService {
         },
       },
     });
-    // Invalidate transaction cache
     await this.invalidateTransactionCache(reference);
   }
 
@@ -223,7 +248,6 @@ export class PaymentService {
         `Cache invalidation failed for transaction ${reference}: ${e.message}`,
         e.stack,
       );
-      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -239,7 +263,6 @@ export class PaymentService {
         `Cache invalidation failed for ticket category ${ticketCategoryId}: ${e.message}`,
         e.stack,
       );
-      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -254,7 +277,6 @@ export class PaymentService {
         `Cache invalidation failed for wallet ${userId}: ${e.message}`,
         e.stack,
       );
-      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -282,7 +304,6 @@ export class PaymentService {
         `Cache invalidation failed for tickets ${ticketIds.join(', ')}: ${e.message}`,
         e.stack,
       );
-      // Do not rethrow; allow transaction to proceed
     }
   }
 
@@ -291,7 +312,7 @@ export class PaymentService {
     eventId: string,
     userId: string,
   ) {
-    const ticketDetails = tickets.map((ticket) => {
+    return tickets.map((ticket) => {
       if (!ticket.code)
         throw new BadRequestException(`Ticket ${ticket.id} missing code`);
       return {
@@ -312,8 +333,6 @@ export class PaymentService {
         },
       };
     });
-
-    return ticketDetails;
   }
 
   async sendPurchaseEmails(
@@ -397,7 +416,6 @@ export class PaymentService {
       throw new NotFoundException('One or more tickets not found');
     }
 
-    // Group tickets by category
     const ticketsByCategory = tickets.reduce(
       (acc, t) => {
         if (t.ticketCategoryId == null) {
@@ -464,15 +482,13 @@ export class PaymentService {
         this.generateTicketDetails(tickets, txn.eventId, txn.userId),
         platformCut,
       );
-
-      // Invalidate ticket caches
       await this.invalidateTicketCache(ticketIds, txn.eventId, txn.userId);
     } catch (err) {
       this.logger.error(
         `Failed to process purchase flow for transaction ${txn.reference}: ${err.message}`,
         err.stack,
       );
-      throw err; // Rethrow to trigger transaction rollback in verifyTransaction
+      throw err;
     }
 
     return ticketIds;
@@ -682,51 +698,16 @@ export class PaymentService {
         totalSellerProceeds,
       );
 
-      // Invalidate ticket caches
       await this.invalidateTicketCache(ticketIds, event.id, txn.userId);
     } catch (err) {
       this.logger.error(
         `Failed to process resale flow for transaction ${txn.reference}: ${err.message}`,
         err.stack,
       );
-      throw err; // Rethrow to trigger transaction rollback in verifyTransaction
+      throw err;
     }
 
     return ticketIds;
-  }
-
-  // Payment Initiation
-  async initiatePayment(data: InitiateDto): Promise<string> {
-    this.logger.log(
-      `💡 Sending payment initiation request to gateway:\n${JSON.stringify(data, null, 2)}`,
-    );
-
-    let response;
-    try {
-      response = await this.callPaymentGateway<{ checkout_url?: string }>(
-        'post',
-        `${this.paymentBaseUrl}/api/v1/initiate`,
-        data,
-      );
-    } catch (error) {
-      this.logger.error(
-        `❌ Payment gateway request failed:\n${JSON.stringify(error.response?.data, null, 2)}\n${error.stack}`,
-      );
-      throw new InternalServerErrorException(
-        error?.response?.data?.message || 'Payment gateway request failed',
-      );
-    }
-
-    this.logger.log(
-      `💳 Payment gateway response:\n${JSON.stringify(response, null, 2)}`,
-    );
-
-    if (!response.checkout_url) {
-      this.logger.error('❌ Payment gateway did not return a checkout_url');
-      throw new BadRequestException('Failed to initiate payment');
-    }
-
-    return response.checkout_url;
   }
 
   async initiateWithdrawal(data: any): Promise<any> {
@@ -735,13 +716,12 @@ export class PaymentService {
     );
     const response = await this.callPaymentGateway(
       'post',
-      `${this.paymentBaseUrl}/api/v1/payout`,
+      `${process.env.PAYMENT_GATEWAY_URL}/api/v1/payout`,
       data,
     );
     return response ?? null;
   }
 
-  // Fetch bank codes
   async fetchBankCodes() {
     try {
       const response = await this.httpService.axiosRef.get(
@@ -757,18 +737,19 @@ export class PaymentService {
     }
   }
 
-  // Transaction Verification
   async verifyTransaction(reference: string) {
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
-    const verifyUrl = `${this.paymentBaseUrl}/api/v1/transactions/verify?reference=${reference}`;
+    const verifyUrl = `${process.env.PAYMENT_GATEWAY_URL}/api/v1/transactions/verify?reference=${reference}`;
 
     this.logger.log(`🌐 Verify URL: ${verifyUrl}`);
-    this.logger.log(`🔑 Secret key defined: ${!!this.paymentSecretKey}`);
-    if (!this.paymentSecretKey) {
+    this.logger.log(
+      `🔑 Secret key defined: ${!!process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
+    );
+    if (!process.env.PAYMENT_GATEWAY_TEST_SECRET) {
       this.logger.error(`❌ Payment secret key is missing in environment`);
     }
-    if (!this.paymentBaseUrl) {
+    if (!process.env.PAYMENT_GATEWAY_URL) {
       this.logger.error(`❌ Payment base URL is missing in environment`);
     }
 
@@ -845,11 +826,10 @@ export class PaymentService {
         `Failed to verify transaction ${reference}: ${err.message}`,
         err.stack,
       );
-      throw err; // Rethrow to allow caller to handle rollback if needed
+      throw err;
     }
   }
 
-  // Ticket Code Generation
   private generateTicketCode(): string {
     const randomPart = randomBytes(5).toString('hex').toUpperCase();
     return `TCK-${randomPart}`;
