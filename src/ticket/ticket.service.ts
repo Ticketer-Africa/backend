@@ -164,7 +164,6 @@ export class TicketService {
     ticketIds: string[],
     clientPage: string,
     type: 'PURCHASE' | 'RESALE' = 'PURCHASE', // Optional parameter to distinguish purchase vs. resale
-    provider?: 'kora' | 'aggregator', // Optional provider override
   ): Promise<string> {
     const redirectUrl = process.env.FRONTEND_URL
       ? `${process.env.FRONTEND_URL}${clientPage}`
@@ -189,7 +188,7 @@ export class TicketService {
     // Call PaymentService.initiatePayin
     let response: PayinResponse;
     try {
-      response = await this.paymentService.initiatePayin(paymentDto, provider);
+      response = await this.paymentService.initiatePayin(paymentDto);
     } catch (error) {
       this.logger.error(`❌ Payment initiation failed: ${error.message}`);
       throw new BadRequestException('Failed to initiate payment');
