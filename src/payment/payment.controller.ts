@@ -1,30 +1,52 @@
 /* eslint-disable prettier/prettier */
-import { Body, Controller, HttpCode, Post, Get } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Get, Logger, BadRequestException } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 
 @Controller('v1/payment')
 export class PaymentController {
+  private readonly logger = new Logger(PaymentController.name);
   constructor(private readonly paymentService: PaymentService) {}
 
   @Post('notification')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Webhook for transaction verification',
-    description: 'Endpoint to verify transactions after receiving payment webhook.',
+    description:
+      'Endpoint to verify transactions after receiving payment webhook from Korapay or Aggregator.',
   })
   @ApiBody({
-    description: 'Payment processor sends reference to confirm transaction',
+    description:
+      'Payment processor webhook payload (Korapay: JSON with event and data, Aggregator: reference string)',
     schema: {
-      type: 'object',
-      properties: {
-        reference: {
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            event: { type: 'string', example: 'charge.success' },
+            data: {
+              type: 'object',
+              properties: {
+                reference: {
+                  type: 'string',
+                  example: 'txn_1720781234567_xyzab',
+                },
+                currency: { type: 'string', example: 'NGN' },
+                amount: { type: 'number', example: 100000 },
+                fee: { type: 'number', example: 1075 },
+                status: { type: 'string', example: 'success' },
+                payment_method: { type: 'string', example: 'bank_transfer' },
+              },
+              required: ['reference'],
+            },
+          },
+          required: ['event', 'data'],
+        },
+        {
           type: 'string',
           example: 'txn_1720781234567_xyzab',
-          description: 'Transaction reference to verify',
         },
-      },
-      required: ['reference'],
+      ],
     },
   })
   @ApiResponse({
@@ -38,15 +60,65 @@ export class PaymentController {
           type: 'array',
           items: { type: 'string' },
         },
+        success: { type: 'boolean' },
       },
     },
   })
-  verifyWebhook(@Body('reference') reference: string) {
-    return this.paymentService.verifyTransaction(reference);
+  async verifyWebhook(@Body() payload: any) {
+    this.logger.log(
+      `Received webhook payload: ${JSON.stringify(payload, null, 2)}`,
+    );
+
+    let reference: string;
+    let provider: 'kora' | 'aggregator' | undefined;
+
+    if (payload?.event === 'charge.success' && payload?.data?.reference) {
+      // Korapay webhook
+      reference = payload.data.reference;
+      provider = 'kora';
+      this.logger.log(`Processing Korapay webhook for reference: ${reference}`);
+    } else if (typeof payload === 'string') {
+      // Aggregator webhook
+      reference = payload;
+      provider = 'aggregator';
+      this.logger.log(
+        `Processing Aggregator webhook for reference: ${reference}`,
+      );
+    } else {
+      this.logger.error(
+        `Invalid webhook payload: ${JSON.stringify(payload, null, 2)}`,
+      );
+      throw new BadRequestException('Invalid webhook payload');
+    }
+
+    if (!reference) {
+      this.logger.error('Webhook payload missing reference');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
+    try {
+      const result = await this.paymentService.verifyTransaction(
+        reference,
+        // provider,
+      );
+      this.logger.log(
+        `Webhook processed successfully for reference: ${reference}`,
+      );
+      return result;
+    } catch (err) {
+      this.logger.error(
+        `Failed to process webhook for reference ${reference}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
   }
 
   @Get('banks')
-  @ApiOperation({ summary: 'Get bank codes', description: 'Fetch list of bank codes from the payment gateway' })
+  @ApiOperation({
+    summary: 'Get bank codes',
+    description: 'Fetch list of bank codes from the payment gateway',
+  })
   @ApiResponse({
     status: 200,
     description: 'List of banks fetched successfully',

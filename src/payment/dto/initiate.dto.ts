@@ -56,3 +56,20 @@ export function sanitizeMetadata(
 export function generateReference(): string {
   return `REF-${randomBytes(8).toString('hex').toUpperCase()}`;
 }
+
+export interface IVerifyProvider {
+  verifyTransaction(reference: string): Promise<VerifyResponse>;
+}
+
+export interface VerifyResponse {
+  status: boolean;
+  message: string;
+  data: {
+    reference: string;
+    status: string;
+    amount: number;
+    currency: string;
+    paymentMethod?: string;
+    fee?: number;
+  };
+}
