@@ -2,12 +2,14 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import {
   PaymentDTO,
   PayinResponse,
   sanitizeMetadata,
+  VerifyResponse,
 } from '../dto/initiate.dto';
 import { IPayinProvider } from '../interface/payin-provider.interface';
 
@@ -40,7 +42,7 @@ export class AggregatorPayinProvider implements IPayinProvider {
     };
 
     this.logger.log(
-      `Initiating Aggregator payin with payload: ${JSON.stringify(payload)}`,
+      `Initiating Aggregator payin with reference: ${dto.reference}`,
     );
 
     try {
@@ -73,7 +75,67 @@ export class AggregatorPayinProvider implements IPayinProvider {
     } catch (err) {
       this.logger.error(`Aggregator initiation failed: ${err.message}`);
       throw new InternalServerErrorException(
-        'Failed to initiate payin with Aggregator',
+        `Failed to initiate payin with Aggregator: ${err.response?.data?.message || err.message}`,
+      );
+    }
+  }
+
+  async verifyTransaction(reference: string): Promise<VerifyResponse> {
+    if (!reference) {
+      this.logger.error('Verification failed: Reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
+    this.logger.log(
+      `Verifying Aggregator transaction with reference: ${reference}`,
+    );
+    const verifyUrl = `${this.baseUrl}/api/v1/transactions/verify?reference=${reference}`;
+
+    try {
+      const response = await this.httpService
+        .get(verifyUrl, {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        .toPromise();
+
+      if (!response || !response.data) {
+        this.logger.error(
+          'Aggregator verification failed: No response data received',
+        );
+        throw new InternalServerErrorException(
+          'Failed to verify transaction with Aggregator: No response data received',
+        );
+      }
+
+      const { status, message } = response.data;
+      if (!status || message !== 'verification successful') {
+        this.logger.error(
+          `Verification failed for ${reference}: status=${status}, message=${message}`,
+        );
+        throw new BadRequestException('Transaction verification failed');
+      }
+
+      // Since Aggregator only returns status and message, fetch additional details from the database
+
+      return {
+        status: true,
+        message: 'Verification successful',
+        data: {
+          reference,
+          status: 'success',
+          amount: 0,
+          currency: 'NGN',
+          paymentMethod: 'unknown',
+          fee: 0,
+        },
+      };
+    } catch (err) {
+      this.logger.error(`Aggregator verification failed: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to verify transaction with Aggregator: ${err.response?.data?.message || err.message}`,
       );
     }
   }

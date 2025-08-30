@@ -1,5 +1,13 @@
 /* eslint-disable prettier/prettier */
-import { Body, Controller, HttpCode, Post, Get, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Post,
+  Get,
+  Logger,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 
@@ -99,8 +107,10 @@ export class PaymentController {
     try {
       const result = await this.paymentService.verifyTransaction(
         reference,
-        // provider,
+        provider,
+        provider === 'kora' ? payload : undefined,
       );
+
       this.logger.log(
         `Webhook processed successfully for reference: ${reference}`,
       );

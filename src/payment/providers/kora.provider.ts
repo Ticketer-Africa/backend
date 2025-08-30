@@ -2,12 +2,14 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import {
   PaymentDTO,
   PayinResponse,
   sanitizeMetadata,
+  VerifyResponse,
 } from '../dto/initiate.dto';
 import { IPayinProvider } from '../interface/payin-provider.interface';
 
@@ -56,7 +58,7 @@ export class KoraPayinProvider implements IPayinProvider {
         ? defaultChannel
         : undefined, // Omit if invalid
       metadata: sanitizeMetadata(dto.metadata),
-      merchant_bears_cost: dto.merchantBearsCost ?? false,
+      merchant_bears_cost: true,
     };
 
     this.logger.log(
@@ -95,6 +97,58 @@ export class KoraPayinProvider implements IPayinProvider {
       );
       throw new InternalServerErrorException(
         `Failed to initiate payin with Korapay: ${err.response?.data?.message || err.message}`,
+      );
+    }
+  }
+
+  async verifyTransaction(reference: string): Promise<VerifyResponse> {
+    if (!reference) {
+      this.logger.error('Verification failed: Reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
+    this.logger.log(
+      `Verifying Korapay transaction with reference: ${reference}`,
+    );
+    try {
+      const response = await this.httpService
+        .get(`${this.baseUrl}/transactions/${reference}`, {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        .toPromise();
+
+      if (!response || !response.data || !response.data.data) {
+        this.logger.error(
+          'Korapay verification response is missing expected data',
+        );
+        throw new InternalServerErrorException(
+          'Korapay verification response is missing expected data',
+        );
+      }
+
+      const resData = response.data.data;
+      return {
+        status: resData.status === 'success',
+        message:
+          resData.status === 'success'
+            ? 'Verification successful'
+            : 'Transaction not successful',
+        data: {
+          reference: resData.reference,
+          status: resData.status,
+          amount: resData.amount,
+          currency: resData.currency,
+          paymentMethod: resData.payment_method,
+          fee: resData.fee,
+        },
+      };
+    } catch (err) {
+      this.logger.error(`Korapay verification failed: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to verify transaction with Korapay: ${err.response?.data?.message || err.message}`,
       );
     }
   }

@@ -16,10 +16,17 @@ import {
   PayinResponse,
   validateDTO,
   generateReference,
+  VerifyResponse,
 } from './dto/initiate.dto';
 import { IPayinProvider } from './interface/payin-provider.interface';
 import { KoraPayinProvider } from './providers/kora.provider';
 import { AggregatorPayinProvider } from './providers/aggregator.provider';
+import { TransactionStatus } from '@prisma/client';
+
+enum TransactionType {
+  PURCHASE = 'PURCHASE',
+  RESALE = 'RESALE',
+}
 
 @Injectable()
 export class PaymentService {
@@ -46,6 +53,7 @@ export class PaymentService {
     const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
     const providerInstance = this.providers.get(selectedProvider);
     if (!providerInstance) {
+      this.logger.error(`Unsupported provider: ${selectedProvider}`);
       throw new BadRequestException(
         `Unsupported provider: ${selectedProvider}`,
       );
@@ -54,7 +62,14 @@ export class PaymentService {
     this.logger.log(
       `Routing payin initiation to provider: ${selectedProvider}`,
     );
-    return providerInstance.initiatePayin(dto);
+    try {
+      return await providerInstance.initiatePayin(dto);
+    } catch (err) {
+      this.logger.error(`Failed to initiate payin: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to initiate payin: ${err.message}`,
+      );
+    }
   }
 
   private sanitizeForCacheTag(value: string): string {
@@ -66,17 +81,25 @@ export class PaymentService {
     url: string,
     data?: any,
   ): Promise<T> {
+    if (!process.env.PAYMENT_GATEWAY_TEST_SECRET) {
+      this.logger.error('Payment secret key is missing in environment');
+      throw new InternalServerErrorException(
+        'Payment gateway secret is not configured',
+      );
+    }
+    if (!process.env.PAYMENT_GATEWAY_URL) {
+      this.logger.error('Payment base URL is missing in environment');
+      throw new InternalServerErrorException(
+        'Payment gateway URL is not configured',
+      );
+    }
+
     const headers = {
       Authorization: `Bearer ${process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
       'Content-Type': 'application/json',
     };
 
     this.logger.log(`📤 Outgoing request → ${method.toUpperCase()} ${url}`);
-    this.logger.log(
-      `📦 Request body: ${data ? JSON.stringify(data, null, 2) : 'N/A'}`,
-    );
-    this.logger.log(`🪪 Request headers: ${JSON.stringify(headers, null, 2)}`);
-
     try {
       const response = await this.httpService
         .request<T>({
@@ -88,29 +111,31 @@ export class PaymentService {
         .toPromise();
 
       if (!response) {
-        this.logger.error('❌ No response received from payment gateway');
+        this.logger.error('No response received from payment gateway');
         throw new InternalServerErrorException(
           'No response from payment gateway',
         );
       }
       this.logger.log(`✅ Payment gateway response status: ${response.status}`);
-      this.logger.log(
-        `✅ Response data: ${JSON.stringify(response.data, null, 2)}`,
-      );
-
       return response.data;
     } catch (err) {
-      this.logger.error(`❌ Payment gateway error: ${err.message}`);
-      this.logger.error(`❌ Status code: ${err?.response?.status || 'N/A'}`);
-      this.logger.error(
-        `❌ Raw response: ${JSON.stringify(err?.response?.data, null, 2)}`,
+      this.logger.error(`Payment gateway error: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Payment gateway request failed: ${err.message}`,
       );
-      throw new InternalServerErrorException('Payment gateway request failed');
     }
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
-  private async findAndLockTransaction(reference: string) {
+  private async findAndLockTransaction(
+    reference: string,
+    status: TransactionStatus,
+  ) {
+    if (!reference) {
+      this.logger.error('Transaction reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
     const sanitizedReference = this.sanitizeForCacheTag(reference);
     return this.prisma.$transaction(async (tx) => {
       const txn = await tx.transaction.findUnique({
@@ -122,28 +147,15 @@ export class PaymentService {
           amount: true,
           type: true,
           status: true,
+          tickets: {
+            select: { ticket: { select: { id: true } } },
+          },
           event: {
             select: {
               id: true,
               name: true,
               organizerId: true,
               primaryFeeBps: true,
-              resaleFeeBps: true,
-              royaltyFeeBps: true,
-              ticketCategories: true,
-            },
-          },
-          tickets: {
-            select: {
-              ticket: {
-                select: {
-                  id: true,
-                  ticketCategoryId: true,
-                  code: true,
-                  userId: true,
-                  ticketCategory: true,
-                },
-              },
             },
           },
           user: { select: { id: true, email: true, name: true } },
@@ -156,13 +168,13 @@ export class PaymentService {
       });
       if (!txn) throw new NotFoundException('Transaction not found');
 
-      if (txn.status === 'SUCCESS') {
+      if (txn.status === status) {
         return { alreadyProcessed: true, txn };
       }
 
       await tx.transaction.update({
         where: { reference },
-        data: { status: 'SUCCESS' },
+        data: { status },
       });
 
       await this.invalidateTransactionCache(reference);
@@ -240,13 +252,12 @@ export class PaymentService {
   private async invalidateTransactionCache(reference: string) {
     const sanitizedReference = this.sanitizeForCacheTag(reference);
     const tags = [`transaction_${sanitizedReference}`];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    this.logger.debug(`Invalidating cache tags: ${tags.join(', ')}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
       this.logger.error(
         `Cache invalidation failed for transaction ${reference}: ${e.message}`,
-        e.stack,
       );
     }
   }
@@ -255,13 +266,12 @@ export class PaymentService {
     const sanitizedTicketCategoryId =
       this.sanitizeForCacheTag(ticketCategoryId);
     const tags = [`ticket_category_${sanitizedTicketCategoryId}`];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    this.logger.debug(`Invalidating cache tags: ${tags.join(', ')}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
       this.logger.error(
         `Cache invalidation failed for ticket category ${ticketCategoryId}: ${e.message}`,
-        e.stack,
       );
     }
   }
@@ -269,13 +279,12 @@ export class PaymentService {
   private async invalidateWalletCache(userId: string) {
     const sanitizedUserId = this.sanitizeForCacheTag(userId);
     const tags = [`wallet_${sanitizedUserId}`];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    this.logger.debug(`Invalidating cache tags: ${tags.join(', ')}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
       this.logger.error(
         `Cache invalidation failed for wallet ${userId}: ${e.message}`,
-        e.stack,
       );
     }
   }
@@ -296,13 +305,12 @@ export class PaymentService {
       `user_tickets_${sanitizedUserId}`,
       'tickets',
     ];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
+    this.logger.debug(`Invalidating cache tags: ${tags.join(', ')}`);
     try {
       await this.prisma.$accelerate.invalidate({ tags });
     } catch (e) {
       this.logger.error(
         `Cache invalidation failed for tickets ${ticketIds.join(', ')}: ${e.message}`,
-        e.stack,
       );
     }
   }
@@ -313,8 +321,9 @@ export class PaymentService {
     userId: string,
   ) {
     return tickets.map((ticket) => {
-      if (!ticket.code)
+      if (!ticket.code) {
         throw new BadRequestException(`Ticket ${ticket.id} missing code`);
+      }
       return {
         ticketId: ticket.id,
         code: ticket.code,
@@ -380,7 +389,7 @@ export class PaymentService {
           ),
       ]);
     } catch (err) {
-      this.logger.error(`Failed to send purchase emails`, err.stack);
+      this.logger.error(`Failed to send purchase emails: ${err.message}`);
     }
   }
 
@@ -486,7 +495,6 @@ export class PaymentService {
     } catch (err) {
       this.logger.error(
         `Failed to process purchase flow for transaction ${txn.reference}: ${err.message}`,
-        err.stack,
       );
       throw err;
     }
@@ -563,15 +571,16 @@ export class PaymentService {
           ),
       ]);
     } catch (err) {
-      this.logger.error(`Failed to send resale emails`, err.stack);
+      this.logger.error(`Failed to send resale emails: ${err.message}`);
     }
   }
 
   private async processResaleFlow(txn: any, ticketIds: string[]) {
-    if (!ticketIds.length)
+    if (!ticketIds.length) {
       throw new BadRequestException(
         'No ticket IDs found for resale transaction',
       );
+    }
 
     const tickets = await this.prisma.ticket.findMany({
       where: { id: { in: ticketIds } },
@@ -603,8 +612,9 @@ export class PaymentService {
           .concat(['tickets']),
       },
     });
-    if (tickets.length !== ticketIds.length)
+    if (tickets.length !== ticketIds.length) {
       throw new NotFoundException('One or more tickets not found');
+    }
 
     const event = tickets[0].event;
     if (!event) throw new NotFoundException('Event not found');
@@ -616,10 +626,11 @@ export class PaymentService {
     try {
       for (const ticket of tickets) {
         const seller = ticket.user;
-        if (!seller)
+        if (!seller) {
           throw new NotFoundException(
             `Seller not found for ticket ${ticket.id}`,
           );
+        }
 
         if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
           throw new BadRequestException(
@@ -702,7 +713,6 @@ export class PaymentService {
     } catch (err) {
       this.logger.error(
         `Failed to process resale flow for transaction ${txn.reference}: ${err.message}`,
-        err.stack,
       );
       throw err;
     }
@@ -712,14 +722,21 @@ export class PaymentService {
 
   async initiateWithdrawal(data: any): Promise<any> {
     this.logger.log(
-      `Initiating withdrawal with data: ${JSON.stringify(data, null, 2)}`,
+      `Initiating withdrawal for userId: ${data.metadata?.userId}`,
     );
-    const response = await this.callPaymentGateway(
-      'post',
-      `${process.env.PAYMENT_GATEWAY_URL}/api/v1/payout`,
-      data,
-    );
-    return response ?? null;
+    try {
+      const response = await this.callPaymentGateway(
+        'post',
+        `${process.env.PAYMENT_GATEWAY_URL}/api/v1/payout`,
+        data,
+      );
+      return response ?? null;
+    } catch (err) {
+      this.logger.error(`Failed to initiate withdrawal: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Withdrawal failed: ${err.message}`,
+      );
+    }
   }
 
   async fetchBankCodes() {
@@ -729,103 +746,147 @@ export class PaymentService {
       );
       return response.data;
     } catch (error) {
-      this.logger.error(
-        `❌ Failed to fetch bank codes: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to fetch bank codes: ${error.message}`);
       throw new InternalServerErrorException('Failed to fetch bank codes');
     }
   }
 
-  async verifyTransaction(reference: string) {
+  async verifyTransaction(
+    reference: string,
+    provider?: string,
+    koraPayload?: any, // <-- optional raw payload when provider is Kora
+  ) {
+    if (!reference) {
+      this.logger.error('Verification failed: Reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
-    const verifyUrl = `${process.env.PAYMENT_GATEWAY_URL}/api/v1/transactions/verify?reference=${reference}`;
+    const providerKey =
+      provider || process.env.GATEWAY?.toLowerCase() || 'kora';
+    const verifyProvider = this.providers.get(providerKey);
 
-    this.logger.log(`🌐 Verify URL: ${verifyUrl}`);
-    this.logger.log(
-      `🔑 Secret key defined: ${!!process.env.PAYMENT_GATEWAY_TEST_SECRET}`,
-    );
-    if (!process.env.PAYMENT_GATEWAY_TEST_SECRET) {
-      this.logger.error(`❌ Payment secret key is missing in environment`);
-    }
-    if (!process.env.PAYMENT_GATEWAY_URL) {
-      this.logger.error(`❌ Payment base URL is missing in environment`);
-    }
+    let response: VerifyResponse;
 
-    let response;
-    try {
-      response = await this.callPaymentGateway<{
-        status: boolean;
-        message: string;
-      }>('get', verifyUrl);
-
+    if (providerKey === 'kora') {
+      // ✅ Kora webhook is only fired on charge.success
       this.logger.log(
-        `✅ Gateway verification response: ${JSON.stringify(response, null, 2)}`,
+        `⚡ Skipping API verification for Kora, using webhook payload directly`,
       );
-    } catch (err) {
-      this.logger.error(
-        `❌ Error calling verify endpoint:\n${err.message}\n${err.stack}`,
-      );
-      this.logger.error(
-        `❌ Raw error response: ${JSON.stringify(err?.response?.data, null, 2)}`,
-      );
-      throw err;
+
+      if (!koraPayload?.data) {
+        throw new BadRequestException('Missing Kora payload for verification');
+      }
+
+      response = {
+        status: true,
+        message: 'Kora webhook received',
+        data: {
+          reference: koraPayload.data.reference,
+          status: koraPayload.data.status, // "success"
+          amount: koraPayload.data.amount,
+          currency: koraPayload.data.currency,
+          paymentMethod: koraPayload.data.payment_method,
+          fee: koraPayload.data.fee,
+        },
+      };
+    } else {
+      // ✅ Aggregators still need explicit verify call
+      if (!verifyProvider) {
+        this.logger.error(`Unknown payment provider: ${providerKey}`);
+        throw new BadRequestException(
+          `Unknown payment provider: ${providerKey}`,
+        );
+      }
+
+      try {
+        response = await verifyProvider.verifyTransaction(reference);
+        this.logger.log(
+          `✅ Gateway response: status=${response.status}, message=${response.message}`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Verification failed for ${reference}: ${err.message}`,
+        );
+        throw new InternalServerErrorException(
+          `Failed to verify transaction: ${err.message}`,
+        );
+      }
     }
 
-    const { status, message } = response;
-    if (!status || message !== 'verification successful') {
-      this.logger.error(
-        `❌ Verification failed for reference: ${reference}, Response: ${JSON.stringify(response, null, 2)}`,
-      );
-      throw new BadRequestException('Transaction verification failed');
+    // --- Map provider status → internal enum
+    const providerStatus = response.data?.status?.toLowerCase();
+    let txnStatus: TransactionStatus;
+
+    switch (providerStatus) {
+      case 'success':
+        txnStatus = TransactionStatus.SUCCESS;
+        break;
+      case 'failed':
+        txnStatus = TransactionStatus.FAILED;
+        break;
+      case 'pending':
+      default:
+        txnStatus = TransactionStatus.PENDING;
+        break;
     }
 
-    this.logger.log(`✅ Reference ${reference} verified by gateway`);
-
-    const { alreadyProcessed, txn } =
-      await this.findAndLockTransaction(reference);
     this.logger.log(
-      `🔐 Transaction DB status for ${reference}: alreadyProcessed=${alreadyProcessed}`,
+      `📌 Provider status for ${reference}: ${providerStatus} → ${txnStatus}`,
+    );
+
+    // --- Update local DB record
+    const { alreadyProcessed, txn } = await this.findAndLockTransaction(
+      reference,
+      txnStatus,
+    );
+
+    this.logger.log(
+      `🔐 Transaction status: alreadyProcessed=${alreadyProcessed}`,
     );
 
     if (alreadyProcessed) {
       return { message: 'Already verified', success: true };
     }
 
+    // --- Only process tickets if SUCCESS
+    if (txnStatus !== TransactionStatus.SUCCESS) {
+      this.logger.warn(
+        `Skipping ticket processing for ${reference}, status is ${txnStatus}`,
+      );
+      return {
+        message: `Transaction updated with status ${txnStatus}`,
+        success: false,
+      };
+    }
+
     const ticketIds = txn.tickets
       .filter((tt) => tt.ticket?.id)
       .map((tt) => tt.ticket.id);
 
-    this.logger.log(
-      `🎟️ Tickets linked to transaction ${reference}: ${JSON.stringify(ticketIds)}`,
-    );
+    this.logger.log(`🎟️ Tickets linked: ${ticketIds.join(', ')}`);
 
     try {
-      if (txn.type === 'PURCHASE') {
-        this.logger.log(`🛒 Processing purchase flow for txn ${reference}`);
+      if (txn.type === TransactionType.PURCHASE) {
+        this.logger.log(`🛒 Processing purchase for ${reference}`);
         await this.processPurchaseFlow(txn, ticketIds);
-      } else if (txn.type === 'RESALE') {
-        this.logger.log(`♻️ Processing resale flow for txn ${reference}`);
+      } else if (txn.type === TransactionType.RESALE) {
+        this.logger.log(`♻️ Processing resale for ${reference}`);
         await this.processResaleFlow(txn, ticketIds);
       } else {
-        this.logger.error(`❌ Invalid transaction type: ${txn.type}`);
+        this.logger.error(`Invalid transaction type: ${txn.type}`);
         throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
       }
 
-      this.logger.log(
-        `🎉 Transaction ${reference} verified and processed successfully`,
-      );
-
+      this.logger.log(`🎉 Transaction ${reference} processed successfully`);
       return {
         message: 'Transaction verified and processed successfully',
         ticketIds,
+        success: true,
       };
     } catch (err) {
-      this.logger.error(
-        `Failed to verify transaction ${reference}: ${err.message}`,
-        err.stack,
-      );
+      this.logger.error(`Failed to process ${reference}: ${err.message}`);
       throw err;
     }
   }
