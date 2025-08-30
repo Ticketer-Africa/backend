@@ -45,7 +45,6 @@ export class PaymentController {
     return this.paymentService.verifyTransaction(reference);
   }
 
-  // New endpoint to fetch bank codes
   @Get('banks')
   @ApiOperation({ summary: 'Get bank codes', description: 'Fetch list of bank codes from the payment gateway' })
   @ApiResponse({

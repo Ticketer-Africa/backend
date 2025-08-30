@@ -17,6 +17,7 @@ import { JwtService } from '@nestjs/jwt';
 import { generateOTP, getOtpExpiry } from '../common/utils/otp.util';
 import { MailService } from '../mail/mail.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -28,24 +29,63 @@ export class AuthService {
 
   // Private Helpers
   private async findUserByEmail(email: string) {
-    return this.prisma.user.findUnique({ where: { email } });
+    // Caching user lookup by email with TTL and SWR
+    // - TTL: 5 minutes to reduce DB load for frequent user checks in ticket purchase flow
+    // - SWR: 1 minute to serve cached data quickly while refreshing for near-real-time updates
+    // - Tag: `user_${email}` for granular invalidation when user data is updated
+    return this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        password: true,
+        role: true,
+        isVerified: true,
+        otp: true,
+        otpExpiresAt: true,
+      },
+      cacheStrategy: {
+        ttl: 300, // 5 minutes
+        swr: 60, // 1 minute
+        tags: [`user_${email}`],
+      },
+    });
   }
 
   private async findUserById(id: string) {
-    return this.prisma.user.findUnique({ where: { id } });
+    // Caching user lookup by ID, similar to findUserByEmail
+    // - Used in ticket purchase flow to validate user (e.g., checking wallet balance or role)
+    // - Same TTL/SWR strategy for consistency
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        password: true,
+        role: true,
+        isVerified: true,
+        otp: true,
+        otpExpiresAt: true,
+      },
+      cacheStrategy: {
+        ttl: 300,
+        swr: 60,
+        tags: [`user_${id}`],
+      },
+    });
   }
 
-  private async hashPassword(password: string): Promise<string> {
-    const hashed = await bcrypt.hash(password, 10);
-    return hashed;
+  private hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, 10);
   }
 
-  private async validatePasswordMatch(
+  private validatePasswordMatch(
     providedPassword: string,
     storedPassword: string,
   ): Promise<boolean> {
-    const valid = await bcrypt.compare(providedPassword, storedPassword);
-    return valid;
+    return bcrypt.compare(providedPassword, storedPassword);
   }
 
   private async generateAndSaveOtp(
@@ -57,6 +97,8 @@ export class AuthService {
       where: { email },
       data: { otp, otpExpiresAt },
     });
+    // Invalidate user cache after OTP update to ensure fresh data
+    await this.invalidateUserCache(email);
     return { otp, otpExpiresAt };
   }
 
@@ -78,6 +120,46 @@ export class AuthService {
       where: { email },
       data: { otp: null, otpExpiresAt: null },
     });
+    // Invalidate user cache after clearing OTP
+    await this.invalidateUserCache(email);
+  }
+
+  private async invalidateUserCache(email: string) {
+    // Helper to invalidate cache for a user by email
+    // - Used after mutations to ensure ticket purchase flow gets fresh user data (e.g., isVerified status)
+    try {
+      await this.prisma.$accelerate.invalidate({
+        tags: [`user_${email}`],
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P6003'
+      ) {
+        console.error('Cache invalidation rate limit reached:', e.message);
+        // Log for monitoring, but don't throw to avoid breaking the flow
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  private async invalidateUserCacheById(id: string) {
+    // Helper to invalidate cache for a user by ID
+    try {
+      await this.prisma.$accelerate.invalidate({
+        tags: [`user_${id}`],
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P6003'
+      ) {
+        console.error('Cache invalidation rate limit reached:', e.message);
+      } else {
+        throw e;
+      }
+    }
   }
 
   // Registration
@@ -97,10 +179,17 @@ export class AuthService {
         otp,
         otpExpiresAt,
       },
+      select: { id: true, email: true },
     });
 
-    await this.mailService.sendRegistrationMail(dto.email, dto.name);
-    await this.mailService.sendOtp(dto.email, dto.name, otp);
+    // Invalidate cache for new user to ensure no stale data in ticket purchase checks
+    await this.invalidateUserCache(dto.email);
+
+    await Promise.all([
+      this.mailService.sendRegistrationMail(dto.email, dto.name),
+      this.mailService.sendOtp(dto.email, dto.name, otp),
+    ]);
+
     return {
       message: 'Account created. Check your email for verification OTP.',
     };
@@ -152,6 +241,9 @@ export class AuthService {
       },
     });
 
+    // Invalidate cache after verification to ensure ticket purchase flow sees updated isVerified status
+    await this.invalidateUserCache(dto.email);
+
     return { message: 'Email verified successfully' };
   }
 
@@ -184,6 +276,7 @@ export class AuthService {
     const user = await this.findUserByEmail(dto.email);
     if (!user) throw new NotFoundException('User not found');
 
+    // Uncomment if OTP validation is required
     // await this.validateOtp(user, dto.otp);
 
     const newHashed = await this.hashPassword(dto.newPassword);
@@ -196,6 +289,9 @@ export class AuthService {
         otpExpiresAt: null,
       },
     });
+
+    // Invalidate cache after password reset to ensure secure ticket purchase flow
+    await this.invalidateUserCache(dto.email);
 
     return { message: 'Password reset successfully' };
   }
@@ -223,6 +319,9 @@ export class AuthService {
       where: { id: userId },
       data: { password: hashedNewPassword },
     });
+
+    // Invalidate cache after password change
+    await this.invalidateUserCacheById(userId);
 
     return { message: 'Password changed successfully' };
   }
