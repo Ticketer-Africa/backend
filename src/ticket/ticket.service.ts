@@ -124,10 +124,17 @@ export class TicketService {
       amount: totalAmount,
       currency: 'NGN',
       reference,
+<<<<<<< Updated upstream
       processor: 'kora',
       narration: `Tickets for ${event.name}`,
       notification_url: process.env.NOTIFICATION_URL,
       redirect_url: redirectUrl,
+=======
+      customer: { email: user.email, name: user.name },
+      redirectUrl,
+      notificationUrl: process.env.NOTIFICATION_URL,
+      narration: `${type === 'PURCHASE' ? 'Ticket purchase' : 'Resale ticket purchase'} for ${event.name}`,
+>>>>>>> Stashed changes
       metadata: { userId: user.id },
     };
 
@@ -142,8 +149,15 @@ export class TicketService {
       throw new BadRequestException('Failed to generate payment link');
     }
 
+<<<<<<< Updated upstream
     this.logger.log(`✅ Payment initiated, checkout URL: ${checkoutUrl}`);
     return checkoutUrl;
+=======
+    this.logger.log(
+      `✅ Payment initiated, checkout URL: ${response.data.checkoutUrl}`,
+    );
+    return response.data.checkoutUrl;
+>>>>>>> Stashed changes
   }
 
   private async rollbackTransaction(reference: string, ticketIds: string[]) {
