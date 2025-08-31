@@ -246,7 +246,7 @@ export class AggregatorPayinProvider implements IPayinProvider {
     this.logger.log('Fetching bank codes from Aggregator');
     try {
       const response = await this.httpService
-        .get(`${this.baseUrl}/api/v1/banks`, {
+        .get(`${this.baseUrl}/banks`, {
           headers: {
             Authorization: `Bearer ${this.secretKey}`,
             'Content-Type': 'application/json',
