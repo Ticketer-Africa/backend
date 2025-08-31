@@ -206,16 +206,12 @@ export class KoraPayinProvider implements IPayinProvider {
   ): Promise<WithdrawalResponse> {
     try {
       const response = await this.httpService
-        .post(
-          `${this.baseUrl}/merchant/api/v1/transactions/disburse`,
-          payload,
-          {
-            headers: {
-              Authorization: `Bearer ${this.secretKey}`,
-              'Content-Type': 'application/json',
-            },
+        .post(`${this.baseUrl}/transactions/disburse`, payload, {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
           },
-        )
+        })
         .toPromise();
 
       if (!response || !response.data || !response.data.data) {
@@ -266,7 +262,7 @@ export class KoraPayinProvider implements IPayinProvider {
     this.logger.log('Fetching bank codes from Korapay');
     try {
       const response = await this.httpService
-        .get(`${this.baseUrl}/merchant/api/v1/misc/banks?countryCode=NG`, {
+        .get(`${this.baseUrl}/misc/banks?countryCode=NG`, {
           headers: {
             Authorization: `Bearer ${this.secretKey}`,
             'Content-Type': 'application/json',
