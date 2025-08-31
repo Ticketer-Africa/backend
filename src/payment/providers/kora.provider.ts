@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import {
   Injectable,
   Logger,
@@ -36,7 +37,7 @@ export class KoraPayinProvider implements IPayinProvider {
 
   // ===================== Payin Helpers =====================
   private preparePayinPayload(dto: PaymentDTO) {
-    const amount = dto.currency === 'NGN' ? Math.round(dto.amount) : dto.amount;
+    const amount = dto.currency === 'NGN' ? Math.round(dto.amount * 100) / 100 : dto.amount;
     const channels =
       dto.channels?.filter((c) => this.supportedChannels.includes(c)) ||
       this.supportedChannels;
@@ -165,6 +166,21 @@ export class KoraPayinProvider implements IPayinProvider {
   }
 
   // ===================== Withdrawal Helpers =====================
+  private async getBankName(bankCode: string): Promise<string> {
+    try {
+      const banks = await this.fetchBankCodes();
+      const bank = banks.data?.find((b: any) => b.code === bankCode);
+      if (!bank) {
+        this.logger.error(`Bank not found for code: ${bankCode}`);
+        throw new BadRequestException(`Invalid bank code: ${bankCode}`);
+      }
+      return bank.name || 'Unknown Bank';
+    } catch (err) {
+      this.logger.error(`Failed to resolve bank name for code ${bankCode}: ${err.message}`);
+      throw new BadRequestException(`Failed to resolve bank name: ${err.message}`);
+    }
+  }
+
   private prepareWithdrawalPayload(dto: WithdrawalDTO) {
     if (dto.currency !== 'NGN') {
       throw new BadRequestException('Only NGN is supported for withdrawals');
@@ -176,27 +192,34 @@ export class KoraPayinProvider implements IPayinProvider {
     }
     if (
       !dto.destination.bank_account?.bank ||
-      !dto.destination.bank_account?.account
+      !dto.destination.bank_account?.account ||
+      !dto.destination.bank_account?.account_name
     ) {
       throw new BadRequestException(
-        'Bank code and account number are required',
+        'Bank code, account number, and account name are required',
       );
+    }
+    if (!dto.customer.email) {
+      throw new BadRequestException('Customer email is required');
     }
 
     return {
       reference: dto.reference,
-      amount: dto.amount,
-      currency: dto.currency,
-      narration: dto.narration || `Withdrawal for ${dto.reference}`,
       destination: {
         type: 'bank_account',
+        amount: Math.round(dto.amount * 100) / 100, // Ensure two decimal places
+        currency: dto.currency,
+        narration: dto.narration || `Withdrawal for ${dto.reference}`,
+        customer: {
+          name: dto.customer.name || 'Unknown',
+          email: dto.customer.email,
+        },
         bank_account: {
           bank: dto.destination.bank_account.bank,
           account: dto.destination.bank_account.account,
-          account_name: dto.customer.name || 'Unknown',
+          account_name: dto.destination.bank_account.account_name,
         },
       },
-      customer: dto.customer,
       metadata: sanitizeMetadata(dto.metadata),
     };
   }
@@ -205,6 +228,13 @@ export class KoraPayinProvider implements IPayinProvider {
     payload: any,
   ): Promise<WithdrawalResponse> {
     try {
+      // Resolve bank_name for bank_account
+      payload.destination.bank_account.bank_name = await this.getBankName(
+        payload.destination.bank_account.bank,
+      );
+
+      this.logger.log(`Sending KoraPay withdrawal request: ${JSON.stringify(payload, null, 2)}`);
+
       const response = await this.httpService
         .post(`${this.baseUrl}/transactions/disburse`, payload, {
           headers: {
