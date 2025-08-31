@@ -105,6 +105,9 @@ export class PaymentService {
               name: true,
               organizerId: true,
               primaryFeeBps: true,
+              organizer: {
+                select: { id: true, email: true, name: true },
+              },
             },
           },
           user: { select: { id: true, email: true, name: true } },
@@ -193,6 +196,11 @@ export class PaymentService {
         select: { id: true, email: true, name: true },
       });
 
+      if (!txn.event.organizer) {
+        this.logger.error(`Organizer not found for event ${txn.eventId}`);
+        throw new NotFoundException(`Organizer not found for event ${txn.eventId}`);
+      }
+
       await Promise.all([
         this.mailService.sendTicketPurchaseBuyerMail(
           txn.user.email,
@@ -202,7 +210,7 @@ export class PaymentService {
         ),
         this.mailService.sendTicketPurchaseOrganizerMail(
           txn.event.organizer.email,
-          txn.event.organizer.name,
+          txn.event.organizer.name || 'Unknown',
           txn.event.name,
           ticketDetails.length,
           txn.amount - platformCut,
@@ -211,7 +219,7 @@ export class PaymentService {
         platformAdmin &&
           this.mailService.sendTicketPurchaseAdminMail(
             platformAdmin.email,
-            platformAdmin.name,
+            platformAdmin.name || 'Admin',
             txn.event.name,
             ticketDetails.length,
             platformCut,
@@ -221,6 +229,9 @@ export class PaymentService {
       ]);
     } catch (err) {
       this.logger.error(`Failed to send purchase emails: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to send purchase emails: ${err.message}`,
+      );
     }
   }
 
@@ -268,9 +279,7 @@ export class PaymentService {
       {} as Record<string, any[]>,
     );
 
-    for (const [categoryId, ticketsInCat] of Object.entries(
-      ticketsByCategory,
-    )) {
+    for (const [categoryId, ticketsInCat] of Object.entries(ticketsByCategory)) {
       const ticketCategory = await this.prisma.ticketCategory.findUnique({
         where: { id: categoryId },
         select: { id: true, name: true, minted: true, maxTickets: true },
@@ -278,6 +287,7 @@ export class PaymentService {
       if (!ticketCategory) {
         throw new NotFoundException(`Ticket category ${categoryId} not found`);
       }
+
       const typedTickets = ticketsInCat as any[];
       await this.updateTicketCategoryMintedCount(
         categoryId,
@@ -339,6 +349,11 @@ export class PaymentService {
       });
       const seller = tickets[0].user;
 
+      if (!organizer) {
+        this.logger.error(`Organizer not found for event ${tickets[0].event.id}`);
+        throw new NotFoundException(`Organizer not found for event ${tickets[0].event.id}`);
+      }
+
       await Promise.all([
         this.mailService.sendTicketResaleBuyerMail(
           txn.user.email,
@@ -354,19 +369,18 @@ export class PaymentService {
           sellerProceeds,
           tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
         ),
-        organizer &&
-          this.mailService.sendTicketResaleOrganizerMail(
-            organizer.email,
-            organizer.name,
-            tickets[0].event.name,
-            tickets.length,
-            organizerRoyalty,
-            tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
-          ),
+        this.mailService.sendTicketResaleOrganizerMail(
+          organizer.email,
+          organizer.name || 'Unknown',
+          tickets[0].event.name,
+          tickets.length,
+          organizerRoyalty,
+          tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
+        ),
         platformAdmin &&
           this.mailService.sendTicketResaleAdminMail(
             platformAdmin.email,
-            platformAdmin.name,
+            platformAdmin.name || 'Admin',
             tickets[0].event.name,
             tickets.length,
             platformCut,
@@ -377,6 +391,9 @@ export class PaymentService {
       ]);
     } catch (err) {
       this.logger.error(`Failed to send resale emails: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to send resale emails: ${err.message}`,
+      );
     }
   }
 
@@ -445,8 +462,7 @@ export class PaymentService {
     const organizerRoyalty = Math.floor(
       (ticket.resalePrice * ticket.event.royaltyFeeBps) / 10000,
     );
-    const sellerProceeds =
-      ticket.resalePrice - (platformCut + organizerRoyalty);
+    const sellerProceeds = ticket.resalePrice - (platformCut + organizerRoyalty);
 
     const newCode = await this.generateUniqueTicketCode();
     await this.prisma.ticket.update({
@@ -508,10 +524,7 @@ export class PaymentService {
       totalSellerProceeds = sellerProceeds;
     }
 
-    await this.updateWalletBalance(
-      tickets[0].event.organizerId,
-      totalOrganizerRoyalty,
-    );
+    await this.updateWalletBalance(tickets[0].event.organizerId, totalOrganizerRoyalty);
 
     const platformAdmin = await this.prisma.user.findUnique({
       where: { email: process.env.ADMIN_EMAIL },
@@ -589,9 +602,7 @@ export class PaymentService {
 
   // ===================== Transaction Verification =====================
   // eslint-disable-next-line @typescript-eslint/require-await
-  private async verifyKoraTransaction(
-    koraPayload: any,
-  ): Promise<VerifyResponse> {
+  private async verifyKoraTransaction(koraPayload: any): Promise<VerifyResponse> {
     if (!koraPayload?.data) {
       throw new BadRequestException('Missing Kora payload for verification');
     }
@@ -670,10 +681,7 @@ export class PaymentService {
       );
       response = await this.verifyKoraTransaction(koraPayload);
     } else {
-      response = await this.verifyAggregatorTransaction(
-        reference,
-        verifyProvider!,
-      );
+      response = await this.verifyAggregatorTransaction(reference, verifyProvider!);
     }
 
     const txnStatus = this.mapProviderStatusToTransactionStatus(
