@@ -21,6 +21,7 @@ export class KoraPayinProvider implements IPayinProvider {
   private readonly logger = new Logger(KoraPayinProvider.name);
   private readonly baseUrl: string;
   private readonly secretKey: string;
+  private readonly publicKey: string;
   private readonly supportedChannels = [
     'card',
     'bank_transfer',
@@ -30,7 +31,8 @@ export class KoraPayinProvider implements IPayinProvider {
   constructor(private httpService: HttpService) {
     this.baseUrl = process.env.KORA_API_URL || '';
     this.secretKey = process.env.KORA_API_TEST_SECRET || '';
-    if (!this.baseUrl || !this.secretKey) {
+    this.publicKey = process.env.KORA_API_TEST_PUBLIC || '';
+    if (!this.baseUrl || !this.secretKey || !this.publicKey) {
       throw new Error('Korapay configuration is missing');
     }
   }
@@ -294,7 +296,7 @@ export class KoraPayinProvider implements IPayinProvider {
       const response = await this.httpService
         .get(`${this.baseUrl}/misc/banks?countryCode=NG`, {
           headers: {
-            Authorization: `Bearer ${this.secretKey}`,
+            Authorization: `Bearer ${this.publicKey}`,
             'Content-Type': 'application/json',
           },
         })
