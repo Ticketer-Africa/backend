@@ -219,7 +219,6 @@ export class KoraPayinProvider implements IPayinProvider {
         bank_account: {
           bank: dto.destination.bank_account.bank,
           account: dto.destination.bank_account.account,
-          account_name: dto.destination.bank_account.account_name,
         },
       },
       metadata: sanitizeMetadata(dto.metadata),
