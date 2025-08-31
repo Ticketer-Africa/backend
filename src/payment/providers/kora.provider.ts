@@ -31,7 +31,7 @@ export class KoraPayinProvider implements IPayinProvider {
   constructor(private httpService: HttpService) {
     this.baseUrl = process.env.KORA_API_URL || '';
     this.secretKey = process.env.KORA_API_TEST_SECRET || '';
-    this.publicKey = process.env.KORA_API_TEST_PUBLIC || '';
+    this.publicKey = process.env.KORA_API_TEST_KEY || '';
     if (!this.baseUrl || !this.secretKey || !this.publicKey) {
       throw new Error('Korapay configuration is missing');
     }
