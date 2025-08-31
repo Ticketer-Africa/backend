@@ -22,12 +22,7 @@ export class EventService {
   ) {}
 
   // Private Helpers
-  private sanitizeForCacheTag(value: string): string {
-    return value.replace(/[^a-zA-Z0-9]/g, '_');
-  }
-
   private async findEventById(eventId: string) {
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -43,18 +38,12 @@ export class EventService {
         bannerUrl: true,
         ticketCategories: true,
       },
-      cacheStrategy: {
-        ttl: 300, // 5 minutes
-        swr: 60, // 1 minute
-        tags: [`event_${sanitizedEventId}`, 'events'],
-      },
     });
     if (!event) throw new NotFoundException('Event not found');
     return event;
   }
 
   private async findEventBySlug(slug: string) {
-    const sanitizedSlug = this.sanitizeForCacheTag(slug);
     const event = await this.prisma.event.findUnique({
       where: { slug },
       select: {
@@ -70,11 +59,6 @@ export class EventService {
         bannerUrl: true,
         ticketCategories: true,
         organizer: { select: { name: true, email: true, profileImage: true } },
-      },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`event_${sanitizedSlug}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -127,38 +111,13 @@ export class EventService {
   }
 
   private async checkIfTicketsExist(eventId: string): Promise<void> {
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     const ticketsCount = await this.prisma.ticket.count({
       where: { eventId },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`event_tickets_${sanitizedEventId}`],
-      },
     });
     if (ticketsCount > 0) {
       throw new BadRequestException(
         'Event cannot be deleted because tickets have already been purchased',
       );
-    }
-  }
-
-  private async invalidateEventCache(eventId: string, slug?: string) {
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
-    const tags = [`event_${sanitizedEventId}`, 'events'];
-    if (slug) {
-      const sanitizedSlug = this.sanitizeForCacheTag(slug);
-      tags.push(`event_${sanitizedSlug}`);
-    }
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
-    try {
-      await this.prisma.$accelerate.invalidate({ tags });
-    } catch (e) {
-      this.logger.error(
-        `Cache invalidation failed for event ${eventId}: ${e.message}`,
-        e.stack,
-      );
-      // Do not rethrow; allow operation to proceed
     }
   }
 
@@ -219,8 +178,6 @@ export class EventService {
         },
       });
 
-      // Invalidate cache to ensure new event appears in listings
-      await this.invalidateEventCache(event.id, event.slug);
       this.logger.log(`Event created with ID: ${event.id}`);
       return event;
     } catch (err) {
@@ -315,8 +272,6 @@ export class EventService {
         },
       });
 
-      // Invalidate cache to reflect updated event data
-      await this.invalidateEventCache(eventId, updatedEvent.slug);
       return updatedEvent;
     } catch (err) {
       this.logger.error(
@@ -342,8 +297,6 @@ export class EventService {
         select: { id: true, isActive: true, slug: true },
       });
 
-      // Invalidate cache to reflect status change
-      await this.invalidateEventCache(id, updatedEvent.slug);
       return updatedEvent;
     } catch (err) {
       this.logger.error(
@@ -364,8 +317,6 @@ export class EventService {
       await this.deleteBannerIfExists(event.bannerUrl!);
       await this.prisma.event.delete({ where: { id } });
 
-      // Invalidate cache to remove deleted event
-      await this.invalidateEventCache(id, event.slug);
       return { message: 'Event deleted successfully', eventId: id };
     } catch (err) {
       this.logger.error(
@@ -378,7 +329,6 @@ export class EventService {
 
   // Queries
   async getOrganizerEvents(userId: string) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     const events = await this.prisma.event.findMany({
       where: { organizerId: userId },
       select: {
@@ -394,11 +344,6 @@ export class EventService {
         ticketCategories: true,
       },
       orderBy: { createdAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`organizer_events_${sanitizedUserId}`, 'events'],
-      },
     });
 
     if (events.length === 0) {
@@ -409,7 +354,6 @@ export class EventService {
   }
 
   async getSingleEvent(eventId: string) {
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -437,11 +381,6 @@ export class EventService {
             },
           },
         },
-      },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`event_${sanitizedEventId}`, 'events'],
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -483,11 +422,6 @@ export class EventService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: ['events'],
-      },
     });
   }
 
@@ -524,16 +458,10 @@ export class EventService {
         ticketCategories: true,
       },
       orderBy: { createdAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: ['events'],
-      },
     });
   }
 
   async getUserEvents(userId: string) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     const tickets = await this.prisma.ticket.findMany({
       where: { userId },
       select: {
@@ -556,11 +484,6 @@ export class EventService {
           },
         },
         ticketCategory: { select: { name: true, price: true } },
-      },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_tickets_${sanitizedUserId}`],
       },
     });
 
@@ -606,11 +529,6 @@ export class EventService {
         ticketCategories: true,
       },
       orderBy: { date: 'asc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: ['events'],
-      },
     });
   }
 
@@ -633,11 +551,6 @@ export class EventService {
         ticketCategories: true,
       },
       orderBy: { date: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: ['events'],
-      },
     });
   }
 }

@@ -24,15 +24,7 @@ export class TicketService {
   ) {}
 
   // ===================== Private Helpers =====================
-  private sanitizeForCacheTag(value: string): string {
-    return value.replace(/[^a-zA-Z0-9]/g, '_');
-  }
-
   private async validateEvent(eventId: string) {
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
-    // Caching event validation
-    // - TTL: 5 minutes, SWR: 1 minute for stable event data
-    // - Tags: `event_${sanitizedEventId}`, `events` for invalidation on event updates
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -42,11 +34,6 @@ export class TicketService {
         date: true,
         organizerId: true,
         ticketCategories: true,
-      },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`event_${sanitizedEventId}`, 'events'],
       },
     });
     if (!event || !event.isActive) {
@@ -61,17 +48,9 @@ export class TicketService {
   }
 
   private async validateUser(userId: string, event: any) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
-    // Caching user validation
-    // - Consistent with AuthService caching
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_${sanitizedUserId}`],
-      },
     });
     if (!user) {
       this.logger.error(`User ${userId} not found`);
@@ -88,10 +67,6 @@ export class TicketService {
     ticketCategoryId: string,
     eventId: string,
   ) {
-    const sanitizedTicketCategoryId =
-      this.sanitizeForCacheTag(ticketCategoryId);
-    // Caching ticket category validation
-    // - Shorter TTL/SWR due to frequent updates (minted tickets)
     const ticketCategory = await this.prisma.ticketCategory.findFirst({
       where: { id: ticketCategoryId, eventId },
       select: {
@@ -100,11 +75,6 @@ export class TicketService {
         price: true,
         maxTickets: true,
         minted: true,
-      },
-      cacheStrategy: {
-        ttl: 60,
-        swr: 30,
-        tags: [`ticket_category_${sanitizedTicketCategoryId}`],
       },
     });
     if (!ticketCategory) {
@@ -156,20 +126,19 @@ export class TicketService {
     });
   }
 
-  async initiatePayment(
+  private async initiatePayment(
     user: { id: string; email: string; name?: string },
     event: { id: string; name: string },
     totalAmount: number,
     reference: string,
     ticketIds: string[],
     clientPage: string,
-    type: 'PURCHASE' | 'RESALE' = 'PURCHASE', // Optional parameter to distinguish purchase vs. resale
+    type: 'PURCHASE' | 'RESALE' = 'PURCHASE',
   ): Promise<string> {
     const redirectUrl = process.env.FRONTEND_URL
       ? `${process.env.FRONTEND_URL}${clientPage}`
       : undefined;
 
-    // Prepare PaymentDTO
     const paymentDto: PaymentDTO = {
       amount: totalAmount,
       currency: 'NGN',
@@ -185,7 +154,6 @@ export class TicketService {
       `💳 Initiating payment with payload:\n${JSON.stringify(paymentDto, null, 2)}`,
     );
 
-    // Call PaymentService.initiatePayin
     let response: PayinResponse;
     try {
       response = await this.paymentService.initiatePayin(paymentDto);
@@ -254,57 +222,13 @@ export class TicketService {
     });
   }
 
-  private async invalidateTicketCache(
-    ticketId: string,
-    eventId: string,
-    userId: string,
-  ) {
-    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
-    const sanitizedEventId = this.sanitizeForCacheTag(eventId);
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
-    const tags = [
-      `ticket_${sanitizedTicketId}`,
-      `resale_tickets_${sanitizedEventId}`,
-      `user_tickets_${sanitizedUserId}`,
-      'tickets',
-    ];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
-    try {
-      await this.prisma.$accelerate.invalidate({ tags });
-    } catch (e) {
-      this.logger.error(`Cache invalidation failed: ${e.message}`, e.stack);
-      // Do not rethrow; allow transaction to proceed
-    }
-  }
-
-  private async invalidateTicketCategoryCache(ticketCategoryId: string) {
-    const sanitizedTicketCategoryId =
-      this.sanitizeForCacheTag(ticketCategoryId);
-    const tags = [`ticket_category_${sanitizedTicketCategoryId}`];
-    this.logger.debug(`Invalidating cache tags: ${JSON.stringify(tags)}`);
-    try {
-      await this.prisma.$accelerate.invalidate({ tags });
-    } catch (e) {
-      this.logger.error(`Cache invalidation failed: ${e.message}`, e.stack);
-      // Do not rethrow; allow transaction to proceed
-    }
-  }
-
   // ===================== Ticket Purchase =====================
-  async buyNewTicket(dto: BuyNewDto, userId: string, clientPage: string) {
-    this.logger.log(
-      `Starting ticket purchase for event ${dto.eventId} by user ${userId}`,
-    );
-
-    const event = await this.validateEvent(dto.eventId);
-    const user = await this.validateUser(userId, event);
-
-    // Validate all ticket categories and calculate total amount
-    const ticketCategories = await Promise.all(
+  private async validateTicketCategories(dto: BuyNewDto, eventId: string) {
+    return Promise.all(
       dto.ticketCategories.map(async (item) => {
         const category = await this.validateTicketCategory(
           item.ticketCategoryId,
-          dto.eventId,
+          eventId,
         );
         if (category.minted + item.quantity > category.maxTickets) {
           this.logger.warn(
@@ -316,6 +240,139 @@ export class TicketService {
         }
         return { ...category, quantity: item.quantity };
       }),
+    );
+  }
+
+  private async createTicketsForCategories(
+    userId: string,
+    eventId: string,
+    ticketCategories: any[],
+  ) {
+    let ticketIds: string[] = [];
+    try {
+      for (const category of ticketCategories) {
+        const ids = await this.createTickets(
+          userId,
+          eventId,
+          category.id,
+          category.quantity,
+        );
+        ticketIds = ticketIds.concat(ids);
+      }
+      return ticketIds;
+    } catch (err) {
+      this.logger.error(
+        `Ticket creation failed for event ${eventId}`,
+        err.stack,
+      );
+      throw new BadRequestException('Error while creating tickets');
+    }
+  }
+
+  private async handleFreeTicketPurchase(
+    userId: string,
+    eventId: string,
+    ticketCategories: any[],
+    ticketIds: string[],
+    reference: string,
+  ) {
+    await this.createTransaction(
+      reference,
+      userId,
+      eventId,
+      0,
+      'PURCHASE',
+      'SUCCESS',
+      ticketIds,
+    );
+
+    await Promise.all(
+      ticketCategories.map((category) =>
+        this.prisma.ticketCategory.update({
+          where: { id: category.id },
+          data: { minted: { increment: category.quantity } },
+        }),
+      ),
+    );
+
+    const txn = await this.prisma.transaction.findUnique({
+      where: { reference },
+      select: {
+        reference: true,
+        user: { select: { email: true, name: true } },
+        event: {
+          select: {
+            name: true,
+            organizer: { select: { email: true, name: true } },
+          },
+        },
+      },
+    });
+
+    const ticketDetails = await this.prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { id: true, ticketCategory: { select: { name: true } } },
+    });
+
+    const formattedDetails = ticketDetails.map((t) => ({
+      categoryName: t.ticketCategory?.name,
+      ticketId: t.id,
+    }));
+
+    await this.paymentService.sendPurchaseEmails(txn, formattedDetails, 0);
+
+    return {
+      message: 'Free tickets created successfully',
+      ticketIds,
+    };
+  }
+
+  private async handlePaidTicketPurchase(
+    user: any,
+    event: any,
+    totalAmount: number,
+    ticketIds: string[],
+    reference: string,
+    clientPage: string,
+  ) {
+    await this.createTransaction(
+      reference,
+      user.id,
+      event.id,
+      totalAmount,
+      'PURCHASE',
+      'PENDING',
+      ticketIds,
+    );
+
+    this.logger.log(
+      `Preparing to initiate payment for ${ticketIds.length} tickets, ref: ${reference}`,
+    );
+    const checkoutUrl = await this.initiatePayment(
+      user,
+      event,
+      totalAmount,
+      reference,
+      ticketIds,
+      clientPage,
+    );
+
+    this.logger.log(
+      `Payment initiated successfully for ${ticketIds.length} tickets: ${checkoutUrl}`,
+    );
+    return { checkoutUrl };
+  }
+
+  async buyNewTicket(dto: BuyNewDto, userId: string, clientPage: string) {
+    this.logger.log(
+      `Starting ticket purchase for event ${dto.eventId} by user ${userId}`,
+    );
+
+    const event = await this.validateEvent(dto.eventId);
+    const user = await this.validateUser(userId, event);
+    const ticketCategories = await this.validateTicketCategories(
+      dto,
+      dto.eventId,
     );
 
     const hasFree = ticketCategories.some((c) => c.price === 0);
@@ -336,133 +393,31 @@ export class TicketService {
     );
     const reference = `txn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Create tickets for all categories
-    let ticketIds: string[] = [];
-    try {
-      for (const category of ticketCategories) {
-        const ids = await this.createTickets(
-          userId,
-          dto.eventId,
-          category.id,
-          category.quantity,
-        );
-        ticketIds = ticketIds.concat(ids);
-      }
-    } catch (err) {
-      this.logger.error(
-        `Ticket creation failed for event ${dto.eventId}`,
-        err.stack,
-      );
-      throw new BadRequestException('Error while creating tickets');
-    }
+    const ticketIds = await this.createTicketsForCategories(
+      userId,
+      dto.eventId,
+      ticketCategories,
+    );
 
     try {
       if (totalAmount === 0) {
-        await this.createTransaction(
-          reference,
+        return await this.handleFreeTicketPurchase(
           userId,
           dto.eventId,
-          0,
-          'PURCHASE',
-          'SUCCESS',
+          ticketCategories,
           ticketIds,
+          reference,
         );
-
-        await Promise.all(
-          ticketCategories.map((category) =>
-            this.prisma.ticketCategory.update({
-              where: { id: category.id },
-              data: { minted: { increment: category.quantity } },
-            }),
-          ),
-        );
-
-        // Invalidate ticket category and user ticket caches, but don't fail transaction on cache error
-        try {
-          await Promise.all([
-            ...ticketCategories.map((category) =>
-              this.invalidateTicketCategoryCache(category.id),
-            ),
-            this.invalidateTicketCache(ticketIds[0], dto.eventId, userId),
-          ]);
-        } catch (cacheErr) {
-          this.logger.error(
-            `Cache invalidation failed for free ticket purchase, ref ${reference}: ${cacheErr.message}`,
-            cacheErr.stack,
-          );
-          // Continue transaction despite cache failure
-        }
-
-        const txn = await this.prisma.transaction.findUnique({
-          where: { reference },
-          select: {
-            reference: true,
-            user: { select: { email: true, name: true } },
-            event: {
-              select: {
-                name: true,
-                organizer: { select: { email: true, name: true } },
-              },
-            },
-          },
-        });
-
-        const ticketDetails = await this.prisma.ticket.findMany({
-          where: { id: { in: ticketIds } },
-          select: { id: true, ticketCategory: { select: { name: true } } },
-        });
-
-        const formattedDetails = ticketDetails.map((t) => ({
-          categoryName: t.ticketCategory?.name,
-          ticketId: t.id,
-        }));
-
-        await this.paymentService.sendPurchaseEmails(txn, formattedDetails, 0);
-
-        return {
-          message: 'Free tickets created successfully',
-          ticketIds,
-        };
       }
 
-      // Paid event: Create pending transaction and initiate payment
-      await this.createTransaction(
-        reference,
-        userId,
-        dto.eventId,
-        totalAmount,
-        'PURCHASE',
-        'PENDING',
-        ticketIds,
-      );
-
-      this.logger.log(
-        `Preparing to initiate payment for ${ticketIds.length} tickets, ref: ${reference}`,
-      );
-      const checkoutUrl = await this.initiatePayment(
+      return await this.handlePaidTicketPurchase(
         user,
         event,
         totalAmount,
-        reference,
         ticketIds,
+        reference,
         clientPage,
       );
-
-      // Invalidate user ticket cache to reflect pending transaction, but don't fail transaction on cache error
-      try {
-        await this.invalidateTicketCache(ticketIds[0], dto.eventId, userId);
-      } catch (cacheErr) {
-        this.logger.error(
-          `Cache invalidation failed for paid ticket purchase, ref ${reference}: ${cacheErr.message}`,
-          cacheErr.stack,
-        );
-        // Continue transaction despite cache failure
-      }
-
-      this.logger.log(
-        `Payment initiated successfully for ${ticketIds.length} tickets: ${checkoutUrl}`,
-      );
-      return { checkoutUrl };
     } catch (err) {
       this.logger.error(
         `Payment initiation failed for ${ticketIds.length} tickets, ref ${reference}: ${err.message}`,
@@ -475,6 +430,46 @@ export class TicketService {
     }
   }
 
+  // ===================== Resale Purchase =====================
+  private async validateResaleTransaction(tx: any, ticketIds: string[]) {
+    const existingTx = await tx.transaction.findFirst({
+      where: {
+        status: 'PENDING',
+        type: 'RESALE',
+        tickets: { some: { ticketId: { in: ticketIds } } },
+      },
+      select: { reference: true },
+    });
+    if (existingTx) {
+      throw new BadRequestException(
+        'Some tickets are already reserved in another transaction',
+      );
+    }
+  }
+
+  private async createResaleTransaction(
+    tx: any,
+    userId: string,
+    eventId: string,
+    totalAmount: number,
+    ticketIds: string[],
+    reference: string,
+  ) {
+    await tx.transaction.create({
+      data: {
+        reference,
+        userId,
+        eventId,
+        amount: totalAmount,
+        type: 'RESALE',
+        status: 'PENDING',
+        tickets: {
+          create: ticketIds.map((id) => ({ ticket: { connect: { id } } })),
+        },
+      },
+    });
+  }
+
   async buyResaleTicket(dto: BuyResaleDto, userId: string) {
     const { ticketIds } = dto;
 
@@ -483,7 +478,6 @@ export class TicketService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Caching resale ticket validation
       const tickets = await tx.ticket.findMany({
         where: {
           id: { in: ticketIds },
@@ -499,13 +493,6 @@ export class TicketService {
           user: { select: { id: true, email: true, name: true } },
           ticketCategory: { select: { name: true, price: true } },
         },
-        cacheStrategy: {
-          ttl: 60,
-          swr: 30,
-          tags: ticketIds
-            .map((id) => `ticket_${this.sanitizeForCacheTag(id)}`)
-            .concat(['tickets']),
-        },
       });
 
       const eventId = await this.validateResaleTickets(
@@ -513,22 +500,9 @@ export class TicketService {
         ticketIds,
         userId,
       );
-      const sanitizedEventId = this.sanitizeForCacheTag(eventId);
       const buyer = await this.validateUser(userId, tickets[0].event);
 
-      const existingTx = await tx.transaction.findFirst({
-        where: {
-          status: 'PENDING',
-          type: 'RESALE',
-          tickets: { some: { ticketId: { in: ticketIds } } },
-        },
-        select: { reference: true },
-      });
-      if (existingTx) {
-        throw new BadRequestException(
-          'Some tickets are already reserved in another transaction',
-        );
-      }
+      await this.validateResaleTransaction(tx, ticketIds);
 
       const totalAmount = tickets.reduce(
         (sum, ticket) => sum + (ticket.resalePrice || 0),
@@ -540,19 +514,14 @@ export class TicketService {
 
       await this.lockResaleTickets(tx, ticketIds);
       try {
-        await tx.transaction.create({
-          data: {
-            reference,
-            userId,
-            eventId,
-            amount: totalAmount,
-            type: 'RESALE',
-            status: 'PENDING',
-            tickets: {
-              create: ticketIds.map((id) => ({ ticket: { connect: { id } } })),
-            },
-          },
-        });
+        await this.createResaleTransaction(
+          tx,
+          userId,
+          eventId,
+          totalAmount,
+          ticketIds,
+          reference,
+        );
 
         const checkoutUrl = await this.initiatePayment(
           buyer,
@@ -561,25 +530,8 @@ export class TicketService {
           reference,
           ticketIds,
           '',
+          'RESALE',
         );
-
-        // Invalidate ticket and resale caches, but don't fail transaction on cache error
-        try {
-          await Promise.all(
-            ticketIds.map((id) =>
-              this.invalidateTicketCache(id, eventId, userId),
-            ),
-          );
-          await this.prisma.$accelerate.invalidate({
-            tags: [`resale_tickets_${sanitizedEventId}`, 'tickets'],
-          });
-        } catch (cacheErr) {
-          this.logger.error(
-            `Cache invalidation failed for resale ticket purchase, ref ${reference}: ${cacheErr.message}`,
-            cacheErr.stack,
-          );
-          // Continue transaction despite cache failure
-        }
 
         return { checkoutUrl };
       } catch (err) {
@@ -597,54 +549,57 @@ export class TicketService {
   }
 
   // ===================== Resale Management =====================
+  private async validateTicketForResale(
+    tx: any,
+    ticketId: string,
+    userId: string,
+  ) {
+    const ticket = await tx.ticket.findFirst({
+      where: { id: ticketId, userId },
+      select: {
+        id: true,
+        userId: true,
+        eventId: true,
+        isUsed: true,
+        isListed: true,
+        resaleCount: true,
+        event: { select: { isActive: true, date: true } },
+        ticketCategory: { select: { name: true, price: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found or not owned by user');
+    }
+    if (ticket.isUsed) {
+      throw new BadRequestException(
+        `Ticket ${ticket.id} has already been used`,
+      );
+    }
+    if (ticket.isListed) {
+      throw new BadRequestException(`Ticket ${ticket.id} is already listed`);
+    }
+    if (ticket.resaleCount >= 1) {
+      throw new BadRequestException(
+        `Ticket ${ticket.id} can only be resold once`,
+      );
+    }
+    if (
+      !ticket.event ||
+      !ticket.event.isActive ||
+      ticket.event.date < new Date()
+    ) {
+      throw new BadRequestException(
+        `Event is not active or has already passed`,
+      );
+    }
+    return ticket;
+  }
+
   async listForResale(dto: ListResaleDto, userId: string) {
     const { ticketId, resalePrice, bankCode, accountNumber } = dto;
-    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
 
     return this.prisma.$transaction(async (tx) => {
-      const ticket = await tx.ticket.findFirst({
-        where: { id: ticketId, userId },
-        select: {
-          id: true,
-          userId: true,
-          eventId: true,
-          isUsed: true,
-          isListed: true,
-          resaleCount: true,
-          event: { select: { isActive: true, date: true } },
-          ticketCategory: { select: { name: true, price: true } },
-        },
-        cacheStrategy: {
-          ttl: 60,
-          swr: 30,
-          tags: [`ticket_${sanitizedTicketId}`, 'tickets'],
-        },
-      });
-      if (!ticket) {
-        throw new NotFoundException('Ticket not found or not owned by user');
-      }
-      if (ticket.isUsed) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} has already been used`,
-        );
-      }
-      if (ticket.isListed) {
-        throw new BadRequestException(`Ticket ${ticket.id} is already listed`);
-      }
-      if (ticket.resaleCount >= 1) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} can only be resold once`,
-        );
-      }
-      if (
-        !ticket.event ||
-        !ticket.event.isActive ||
-        ticket.event.date < new Date()
-      ) {
-        throw new BadRequestException(
-          `Event is not active or has already passed`,
-        );
-      }
+      await this.validateTicketForResale(tx, ticketId, userId);
 
       try {
         const updatedTicket = await tx.ticket.update({
@@ -666,8 +621,6 @@ export class TicketService {
           },
         });
 
-        // Invalidate ticket and resale caches
-        await this.invalidateTicketCache(ticketId, ticket.eventId, userId);
         return updatedTicket;
       } catch (err) {
         this.logger.error(
@@ -679,44 +632,47 @@ export class TicketService {
     });
   }
 
+  private async validateTicketForRemoval(
+    tx: any,
+    ticketId: string,
+    userId: string,
+  ) {
+    const ticket = await tx.ticket.findFirst({
+      where: { id: ticketId, userId },
+      select: {
+        id: true,
+        userId: true,
+        eventId: true,
+        isListed: true,
+        event: { select: { isActive: true, date: true } },
+        ticketCategory: { select: { name: true, price: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found or not owned by user');
+    }
+    if (!ticket.isListed) {
+      throw new BadRequestException(
+        `Ticket ${ticket.id} is not listed for resale`,
+      );
+    }
+    if (
+      !ticket.event ||
+      !ticket.event.isActive ||
+      ticket.event.date < new Date()
+    ) {
+      throw new BadRequestException(
+        `Event is not active or has already passed`,
+      );
+    }
+    return ticket;
+  }
+
   async removeFromResale(dto: RemoveResaleDto, userId: string) {
     const { ticketId } = dto;
-    const sanitizedTicketId = this.sanitizeForCacheTag(ticketId);
 
     return this.prisma.$transaction(async (tx) => {
-      const ticket = await tx.ticket.findFirst({
-        where: { id: ticketId, userId },
-        select: {
-          id: true,
-          userId: true,
-          eventId: true,
-          isListed: true,
-          event: { select: { isActive: true, date: true } },
-          ticketCategory: { select: { name: true, price: true } },
-        },
-        cacheStrategy: {
-          ttl: 60,
-          swr: 30,
-          tags: [`ticket_${sanitizedTicketId}`, 'tickets'],
-        },
-      });
-      if (!ticket) {
-        throw new NotFoundException('Ticket not found or not owned by user');
-      }
-      if (!ticket.isListed) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} is not listed for resale`,
-        );
-      }
-      if (
-        !ticket.event ||
-        !ticket.event.isActive ||
-        ticket.event.date < new Date()
-      ) {
-        throw new BadRequestException(
-          `Event is not active or has already passed`,
-        );
-      }
+      await this.validateTicketForRemoval(tx, ticketId, userId);
 
       try {
         const updatedTicket = await tx.ticket.update({
@@ -738,8 +694,6 @@ export class TicketService {
           },
         });
 
-        // Invalidate ticket and resale caches
-        await this.invalidateTicketCache(ticketId, ticket.eventId, userId);
         return updatedTicket;
       } catch (err) {
         this.logger.error(
@@ -756,7 +710,6 @@ export class TicketService {
     const where: any = { isListed: true, soldTo: null };
     if (eventId) where.eventId = eventId;
 
-    const sanitizedEventId = eventId ? this.sanitizeForCacheTag(eventId) : null;
     return this.prisma.ticket.findMany({
       where,
       select: {
@@ -774,18 +727,10 @@ export class TicketService {
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: sanitizedEventId
-          ? [`resale_tickets_${sanitizedEventId}`, 'tickets']
-          : ['tickets'],
-      },
     });
   }
 
   async getMyListings(userId: string) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: { userId, isListed: true },
       select: {
@@ -798,16 +743,10 @@ export class TicketService {
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
-      },
     });
   }
 
   async getBoughtFromResale(userId: string) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: { soldTo: userId },
       select: {
@@ -821,16 +760,10 @@ export class TicketService {
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { listedAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
-      },
     });
   }
 
   async getMyTickets(userId: string) {
-    const sanitizedUserId = this.sanitizeForCacheTag(userId);
     return this.prisma.ticket.findMany({
       where: {
         userId,
@@ -841,27 +774,20 @@ export class TicketService {
         ticketCategory: { select: { name: true, price: true } },
       },
       orderBy: { createdAt: 'desc' },
-      cacheStrategy: {
-        ttl: 300,
-        swr: 60,
-        tags: [`user_tickets_${sanitizedUserId}`, 'tickets'],
-      },
     });
   }
 
   // ===================== Verification =====================
-  async verifyTicket(payload: {
+  private async findTicketForVerification(payload: {
     ticketId?: string;
     code?: string;
     eventId: string;
-    userId: string;
   }) {
-    const { ticketId, code, eventId, userId } = payload;
+    const { ticketId, code, eventId } = payload;
     if (!ticketId && !code) {
       throw new BadRequestException('Either ticketId or code is required');
     }
 
-    const sanitizedTag = this.sanitizeForCacheTag(ticketId || code || '');
     const ticket = await this.prisma.ticket.findFirst({
       where: { eventId, ...(ticketId ? { id: ticketId } : { code }) },
       select: {
@@ -875,15 +801,26 @@ export class TicketService {
         },
         ticketCategory: { select: { name: true, price: true } },
       },
-      cacheStrategy: {
-        ttl: 60,
-        swr: 30,
-        tags: [`ticket_${sanitizedTag}`, 'tickets'],
-      },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
+    return ticket;
+  }
 
-    const isOrganizer = ticket.event.organizerId === userId;
+  private async markTicketAsUsed(tx: any, ticketId: string) {
+    await tx.ticket.update({
+      where: { id: ticketId },
+      data: { isUsed: true },
+    });
+  }
+
+  async verifyTicket(payload: {
+    ticketId?: string;
+    code?: string;
+    eventId: string;
+    userId: string;
+  }) {
+    const ticket = await this.findTicketForVerification(payload);
+    const isOrganizer = ticket.event.organizerId === payload.userId;
 
     let status = 'VALID';
     let message = 'Ticket is valid';
@@ -893,16 +830,10 @@ export class TicketService {
       status = 'USED';
       message = 'Ticket has already been used';
     } else if (isOrganizer) {
-      await this.prisma.ticket.update({
-        where: { id: ticket.id },
-        data: { isUsed: true },
-      });
+      await this.markTicketAsUsed(this.prisma, ticket.id);
       status = 'VALID';
       message = 'Ticket is valid and now marked as used';
       markedUsed = true;
-
-      // Invalidate ticket cache after marking as used
-      await this.invalidateTicketCache(ticket.id, eventId, ticket.userId);
     }
 
     return {

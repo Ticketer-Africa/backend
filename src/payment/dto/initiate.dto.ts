@@ -17,6 +17,40 @@ export interface PaymentDTO {
   merchantBearsCost?: boolean;
 }
 
+// Generic Withdrawal DTO
+export interface WithdrawalDTO {
+  amount: number;
+  currency: string;
+  reference: string;
+  narration?: string;
+  notificationUrl?: string;
+  metadata?: Record<string, any>;
+  customer: { email: string; name?: string };
+  destination: {
+    type: 'bank_account' | 'mobile_money';
+    bank_account?: {
+      bank: string;
+      account: string;
+      account_name?: string;
+      first_name?: string;
+      last_name?: string;
+      payment_method?: { type: string; value: string };
+      address_information?: {
+        country: string;
+        city: string;
+        state: string;
+        zip_code: string;
+        street: string;
+        full_address: string;
+      };
+    };
+    mobile_money?: {
+      operator: string;
+      mobile_number: string;
+    };
+  };
+}
+
 // Generic Payin Response
 export interface PayinResponse {
   status: boolean;
@@ -24,8 +58,24 @@ export interface PayinResponse {
   data: { reference: string; checkoutUrl?: string };
 }
 
+// Generic Withdrawal Response
+export interface WithdrawalResponse {
+  status: boolean;
+  message: string;
+  data: {
+    reference: string;
+    amount: string;
+    fee: string;
+    currency: string;
+    status: string;
+    narration: string;
+    customer: { name: string; email: string; phone: string | null };
+    metadata?: Record<string, any>;
+  };
+}
+
 // Helper Functions
-export function validateDTO(dto: PaymentDTO): void {
+export function validateDTO(dto: PaymentDTO | WithdrawalDTO): void {
   if (!dto.amount || dto.amount <= 0) {
     throw new BadRequestException('Amount is required and must be positive');
   }
@@ -49,6 +99,13 @@ export function sanitizeMetadata(
   const keys = Object.keys(metadata);
   if (keys.length > 5) {
     throw new BadRequestException('Metadata cannot exceed 5 keys');
+  }
+  for (const key of keys) {
+    if (key.length > 20 || !/^[A-Za-z0-9-]+$/.test(key)) {
+      throw new BadRequestException(
+        'Metadata keys must be alphanumeric or hyphens and max 20 characters',
+      );
+    }
   }
   return metadata;
 }

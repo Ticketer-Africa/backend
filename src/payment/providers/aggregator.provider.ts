@@ -10,6 +10,8 @@ import {
   PayinResponse,
   sanitizeMetadata,
   VerifyResponse,
+  WithdrawalDTO,
+  WithdrawalResponse,
 } from '../dto/initiate.dto';
 import { IPayinProvider } from '../interface/payin-provider.interface';
 
@@ -27,8 +29,9 @@ export class AggregatorPayinProvider implements IPayinProvider {
     }
   }
 
-  async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
-    const payload = {
+  // ===================== Payin Helpers =====================
+  private preparePayinPayload(dto: PaymentDTO) {
+    return {
       amount: dto.amount,
       currency: dto.currency,
       reference: dto.reference,
@@ -40,11 +43,9 @@ export class AggregatorPayinProvider implements IPayinProvider {
       mode: 'card',
       metadata: sanitizeMetadata(dto.metadata),
     };
+  }
 
-    this.logger.log(
-      `Initiating Aggregator payin with reference: ${dto.reference}`,
-    );
-
+  private async sendPayinRequest(payload: any): Promise<PayinResponse> {
     try {
       const response = await this.httpService
         .post(`${this.baseUrl}/api/v1/initiate`, payload, {
@@ -68,7 +69,7 @@ export class AggregatorPayinProvider implements IPayinProvider {
         status: !!resData.checkout_url,
         message: resData.message || 'Payin initiated successfully',
         data: {
-          reference: dto.reference,
+          reference: payload.reference,
           checkoutUrl: resData.checkout_url,
         },
       };
@@ -80,17 +81,17 @@ export class AggregatorPayinProvider implements IPayinProvider {
     }
   }
 
-  async verifyTransaction(reference: string): Promise<VerifyResponse> {
-    if (!reference) {
-      this.logger.error('Verification failed: Reference is undefined');
-      throw new BadRequestException('Transaction reference is required');
-    }
-
+  async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
     this.logger.log(
-      `Verifying Aggregator transaction with reference: ${reference}`,
+      `Initiating Aggregator payin with reference: ${dto.reference}`,
     );
-    const verifyUrl = `${this.baseUrl}/api/v1/transactions/verify?reference=${reference}`;
+    const payload = this.preparePayinPayload(dto);
+    return this.sendPayinRequest(payload);
+  }
 
+  // ===================== Verification Helpers =====================
+  private async sendVerifyRequest(reference: string): Promise<VerifyResponse> {
+    const verifyUrl = `${this.baseUrl}/api/v1/transactions/verify?reference=${reference}`;
     try {
       const response = await this.httpService
         .get(verifyUrl, {
@@ -118,8 +119,6 @@ export class AggregatorPayinProvider implements IPayinProvider {
         throw new BadRequestException('Transaction verification failed');
       }
 
-      // Since Aggregator only returns status and message, fetch additional details from the database
-
       return {
         status: true,
         message: 'Verification successful',
@@ -136,6 +135,136 @@ export class AggregatorPayinProvider implements IPayinProvider {
       this.logger.error(`Aggregator verification failed: ${err.message}`);
       throw new InternalServerErrorException(
         `Failed to verify transaction with Aggregator: ${err.response?.data?.message || err.message}`,
+      );
+    }
+  }
+
+  async verifyTransaction(reference: string): Promise<VerifyResponse> {
+    if (!reference) {
+      this.logger.error('Verification failed: Reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
+    this.logger.log(
+      `Verifying Aggregator transaction with reference: ${reference}`,
+    );
+    return this.sendVerifyRequest(reference);
+  }
+
+  // ===================== Withdrawal =====================
+  private prepareWithdrawalPayload(dto: WithdrawalDTO) {
+    if (dto.currency !== 'NGN') {
+      throw new BadRequestException('Only NGN is supported for withdrawals');
+    }
+    if (dto.destination.type !== 'bank_account') {
+      throw new BadRequestException(
+        'Only bank_account withdrawals are supported',
+      );
+    }
+    if (
+      !dto.destination.bank_account?.bank ||
+      !dto.destination.bank_account?.account
+    ) {
+      throw new BadRequestException(
+        'Bank code and account number are required',
+      );
+    }
+
+    return {
+      amount: dto.amount,
+      currency: dto.currency,
+      reference: dto.reference,
+      narration: dto.narration || `Withdrawal for ${dto.reference}`,
+      customer: dto.customer,
+      destination: {
+        type: 'bank_account',
+        bank_account: {
+          bank: dto.destination.bank_account.bank,
+          account: dto.destination.bank_account.account,
+          account_name: dto.customer.name || 'Unknown',
+        },
+      },
+      metadata: sanitizeMetadata(dto.metadata),
+    };
+  }
+
+  private async sendWithdrawalRequest(
+    payload: any,
+  ): Promise<WithdrawalResponse> {
+    try {
+      const response = await this.httpService
+        .post(`${this.baseUrl}/api/v1/payout`, payload, {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        .toPromise();
+
+      if (!response || !response.data) {
+        this.logger.error(
+          'Aggregator withdrawal failed: No response data received',
+        );
+        throw new InternalServerErrorException(
+          'Failed to initiate withdrawal with Aggregator: No response data received',
+        );
+      }
+
+      const resData = response.data;
+      return {
+        status: resData.status || true,
+        message: resData.message || 'Withdrawal initiated successfully',
+        data: {
+          reference: payload.reference,
+          amount: resData.amount || payload.amount.toString(),
+          fee: resData.fee || '0',
+          currency: payload.currency,
+          status: resData.status || 'processing',
+          narration: payload.narration,
+          customer: payload.customer,
+          metadata: payload.metadata,
+        },
+      };
+    } catch (err) {
+      this.logger.error(`Aggregator withdrawal failed: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to initiate withdrawal with Aggregator: ${err.response?.data?.message || err.message}`,
+      );
+    }
+  }
+
+  async initiateWithdrawal(dto: WithdrawalDTO): Promise<WithdrawalResponse> {
+    this.logger.log(
+      `Initiating Aggregator withdrawal with reference: ${dto.reference}`,
+    );
+    const payload = this.prepareWithdrawalPayload(dto);
+    return this.sendWithdrawalRequest(payload);
+  }
+
+  // ===================== Bank Codes =====================
+  async fetchBankCodes(): Promise<any> {
+    this.logger.log('Fetching bank codes from Aggregator');
+    try {
+      const response = await this.httpService
+        .get(`${this.baseUrl}/api/v1/banks`, {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        .toPromise();
+
+      if (!response || !response.data) {
+        this.logger.error('Failed to fetch bank codes: No response data');
+        throw new InternalServerErrorException(
+          'Failed to fetch bank codes from Aggregator: No response data',
+        );
+      }
+      return response.data;
+    } catch (err) {
+      this.logger.error(`Failed to fetch bank codes: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to fetch bank codes from Aggregator: ${err.response?.data?.message || err.message}`,
       );
     }
   }
