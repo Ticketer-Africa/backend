@@ -580,7 +580,7 @@ export class PaymentService {
 
   // ===================== Bank Codes =====================
   async fetchBankCodes() {
-    const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const selectedProvider = 'aggregator';
     const providerInstance = this.providers.get(selectedProvider);
     if (!providerInstance) {
       this.logger.error(`Unsupported provider: ${selectedProvider}`);
