@@ -230,9 +230,9 @@ export class KoraPayinProvider implements IPayinProvider {
   ): Promise<WithdrawalResponse> {
     try {
       // Resolve bank_name for bank_account
-      payload.destination.bank_account.bank_name = await this.getBankName(
-        payload.destination.bank_account.bank,
-      );
+      // payload.destination.bank_account.bank_name = await this.getBankName(
+      //   payload.destination.bank_account.bank,
+      // );
 
       this.logger.log(`Sending KoraPay withdrawal request: ${JSON.stringify(payload, null, 2)}`);
 
