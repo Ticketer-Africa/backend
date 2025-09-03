@@ -178,11 +178,9 @@ export class AggregatorPayinProvider implements IPayinProvider {
       customer: dto.customer,
       destination: {
         type: 'bank_account',
-        bank_account: {
-          bank_code: dto.destination.bank_account.bank,
-          account_number: dto.destination.bank_account.account,
-          account_name: dto.customer.name || 'Unknown',
-        },
+        bank_code: dto.destination.bank_account.bank,
+        account_number: dto.destination.bank_account.account,
+        account_name: dto.customer.name || 'Unknown',
       },
       metadata: sanitizeMetadata(dto.metadata),
       notification_url: dto.notificationUrl,
