@@ -666,7 +666,7 @@ export class PaymentService {
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
     const providerKey =
-      provider || process.env.GATEWAY?.toLowerCase() || 'aggregator';
+      process.env.GATEWAY?.toLowerCase() || 'aggregator';
     const verifyProvider = this.providers.get(providerKey);
 
     if (!verifyProvider && providerKey !== 'kora') {
