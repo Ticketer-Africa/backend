@@ -191,6 +191,10 @@ export class AggregatorPayinProvider implements IPayinProvider {
   private async sendWithdrawalRequest(
     payload: any,
   ): Promise<WithdrawalResponse> {
+    this.logger.log(
+      `🔄 Initiating withdrawal request | Reference: ${payload.reference} | Amount: ${payload.amount} ${payload.currency}`,
+    );
+
     try {
       const response = await this.httpService
         .post(`${this.baseUrl}/api/v1/payout`, payload, {
@@ -203,7 +207,7 @@ export class AggregatorPayinProvider implements IPayinProvider {
 
       if (!response || !response.data) {
         this.logger.error(
-          'Aggregator withdrawal failed: No response data received',
+          `❌ Aggregator withdrawal failed | Reference: ${payload.reference} | Reason: No response data`,
         );
         throw new InternalServerErrorException(
           'Failed to initiate withdrawal with Aggregator: No response data received',
@@ -211,6 +215,13 @@ export class AggregatorPayinProvider implements IPayinProvider {
       }
 
       const resData = response.data;
+
+      this.logger.log(
+        `✅ Withdrawal request successful | Reference: ${payload.reference} | Aggregator Response: ${JSON.stringify(
+          resData,
+        )}`,
+      );
+
       return {
         status: resData.status || true,
         message: resData.message || 'Withdrawal initiated successfully',
@@ -226,9 +237,18 @@ export class AggregatorPayinProvider implements IPayinProvider {
         },
       };
     } catch (err) {
-      this.logger.error(`Aggregator withdrawal failed: ${err.message}`);
+      this.logger.error(
+        `❌ Aggregator withdrawal failed | Reference: ${
+          payload.reference
+        } | Error: ${err.message} | Response: ${JSON.stringify(
+          err.response?.data || {},
+        )}`,
+      );
+
       throw new InternalServerErrorException(
-        `Failed to initiate withdrawal with Aggregator: ${err.response?.data?.message || err.message}`,
+        `Failed to initiate withdrawal with Aggregator: ${
+          err.response?.data?.message || err.message
+        }`,
       );
     }
   }
