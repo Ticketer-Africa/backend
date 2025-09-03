@@ -59,26 +59,28 @@ export class WalletService {
   // Withdrawal Helpers
   // ----------------------
 
-  private async validateWithdrawal(userId: string, payload: {
-    email: string;
-    name: string;
-    pin: string;
-    amount: number;
-    account_number: string;
-    bank_code: string;
-    narration?: string;
-  }) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  private async validateWithdrawal(
+    userId: string,
+    payload: {
+      email: string;
+      name: string;
+      pin: string;
+      amount: number;
+      account_number: string;
+      bank_code: string;
+      narration?: string;
+    },
+    tx: any, // transaction client
+  ) {
+    const user = await tx.user.findUnique({ where: { id: userId } });
     if (user?.role === 'USER') {
       throw new BadRequestException(
         'Users cannot withdraw funds...buy a ticket instead',
       );
     }
 
-    
-
-    const wallet = await this.validateWallet(userId);
-    if (!wallet.pin) {
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet?.pin) {
       throw new BadRequestException(
         'PIN not set. Please set your wallet PIN before withdrawing.',
       );
@@ -126,7 +128,8 @@ export class WalletService {
       },
     };
 
-    const payoutResult = await this.paymentService.initiateWithdrawal(withdrawalDto);
+    const payoutResult =
+      await this.paymentService.initiateWithdrawal(withdrawalDto);
 
     await tx.wallet.update({
       where: { userId },
@@ -223,8 +226,14 @@ export class WalletService {
     },
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.validateWithdrawal(userId, payload);
-      const { reference, payoutResult } = await this.processWithdrawal(userId, payload, tx);
+      await this.validateWithdrawal(userId, payload, tx);
+
+      const { reference, payoutResult } = await this.processWithdrawal(
+        userId,
+        payload,
+        tx,
+      );
+
       return {
         message: 'Withdrawal initiated successfully',
         reference,
