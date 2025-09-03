@@ -75,6 +75,8 @@ export class WalletService {
       );
     }
 
+    
+
     const wallet = await this.validateWallet(userId);
     if (!wallet.pin) {
       throw new BadRequestException(

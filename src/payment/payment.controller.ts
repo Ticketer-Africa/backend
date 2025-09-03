@@ -77,27 +77,9 @@ export class PaymentController {
       `Received webhook payload: ${JSON.stringify(payload, null, 2)}`,
     );
 
-    let reference: string;
-    let provider: 'kora' | 'aggregator' | undefined;
+    let provider: 'aggregator' | undefined;
 
-    if (payload?.event === 'charge.success' && payload?.data?.reference) {
-      // Korapay webhook
-      reference = payload.data.reference;
-      provider = 'kora';
-      this.logger.log(`Processing Korapay webhook for reference: ${reference}`);
-    } else if (typeof payload === 'string') {
-      // Aggregator webhook
-      reference = payload;
-      provider = 'aggregator';
-      this.logger.log(
-        `Processing Aggregator webhook for reference: ${reference}`,
-      );
-    } else {
-      this.logger.error(
-        `Invalid webhook payload: ${JSON.stringify(payload, null, 2)}`,
-      );
-      throw new BadRequestException('Invalid webhook payload');
-    }
+    const reference = payload.data.reference;
 
     if (!reference) {
       this.logger.error('Webhook payload missing reference');
@@ -108,7 +90,7 @@ export class PaymentController {
       const result = await this.paymentService.verifyTransaction(
         reference,
         provider,
-        provider === 'kora' ? payload : undefined,
+        provider === 'aggregator' ? payload : undefined,
       );
 
       this.logger.log(
