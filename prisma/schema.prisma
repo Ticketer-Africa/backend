@@ -29,6 +29,8 @@ model User {
   events        Event[]    
   tickets       Ticket[]    
   transactions  Transaction[] 
+
+  EventPayout EventPayout[]
 }
 
 model Wallet {
@@ -62,7 +64,24 @@ model Event {
   tickets     Ticket[]
   ticketCategories TicketCategory[] 
   transactions Transaction[]
+
+  EventPayout EventPayout?
 }
+
+model EventPayout {
+  id         String   @id @default(cuid())
+  event      Event    @relation(fields: [eventId], references: [id])
+  eventId    String   @unique
+
+  organizer  User     @relation(fields: [organizerId], references: [id])
+  organizerId String
+
+  balance    Decimal  @default("0.00") 
+  released   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 
 model TicketCategory {
   id          String    @id @default(cuid())

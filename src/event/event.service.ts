@@ -342,6 +342,10 @@ export class EventService {
         isActive: true,
         bannerUrl: true,
         ticketCategories: true,
+        EventPayout: {
+          // relation
+          select: { balance: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -350,7 +354,11 @@ export class EventService {
       return { message: 'You have not created any events yet' };
     }
 
-    return events;
+    // Flatten payout into "balance"
+    return events.map((event) => ({
+      ...event,
+      balance: event.EventPayout?.balance ?? 0,
+    }));
   }
 
   async getSingleEvent(eventId: string) {

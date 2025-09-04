@@ -146,6 +146,22 @@ export class PaymentService {
     });
   }
 
+  private async updateEventPayoutBalance(
+    eventId: string,
+    organizerId: string,
+    amount: number,
+  ) {
+    await this.prisma.eventPayout.upsert({
+      where: { eventId },
+      update: { balance: { increment: amount } },
+      create: {
+        eventId,
+        organizerId,
+        balance: amount,
+      },
+    });
+  }
+
   private async upsertPlatformAdminWallet(adminId: string, amount: number) {
     await this.prisma.wallet.upsert({
       where: { userId: adminId },
@@ -198,7 +214,9 @@ export class PaymentService {
 
       if (!txn.event.organizer) {
         this.logger.error(`Organizer not found for event ${txn.eventId}`);
-        throw new NotFoundException(`Organizer not found for event ${txn.eventId}`);
+        throw new NotFoundException(
+          `Organizer not found for event ${txn.eventId}`,
+        );
       }
 
       await Promise.all([
@@ -279,7 +297,9 @@ export class PaymentService {
       {} as Record<string, any[]>,
     );
 
-    for (const [categoryId, ticketsInCat] of Object.entries(ticketsByCategory)) {
+    for (const [categoryId, ticketsInCat] of Object.entries(
+      ticketsByCategory,
+    )) {
       const ticketCategory = await this.prisma.ticketCategory.findUnique({
         where: { id: categoryId },
         select: { id: true, name: true, minted: true, maxTickets: true },
@@ -304,8 +324,14 @@ export class PaymentService {
     );
     const organizerProceeds = txn.amount - platformCut;
 
-    await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
+    // 🔒 Lock funds in EventPayout instead of Wallet
+    await this.updateEventPayoutBalance(
+      txn.eventId,
+      txn.event.organizerId,
+      organizerProceeds,
+    );
 
+    // 💰 Platform admin cut still goes directly to admin wallet
     const platformAdmin = await this.prisma.user.findUnique({
       where: { email: process.env.ADMIN_EMAIL },
       select: { id: true, email: true, name: true },
@@ -350,8 +376,12 @@ export class PaymentService {
       const seller = tickets[0].user;
 
       if (!organizer) {
-        this.logger.error(`Organizer not found for event ${tickets[0].event.id}`);
-        throw new NotFoundException(`Organizer not found for event ${tickets[0].event.id}`);
+        this.logger.error(
+          `Organizer not found for event ${tickets[0].event.id}`,
+        );
+        throw new NotFoundException(
+          `Organizer not found for event ${tickets[0].event.id}`,
+        );
       }
 
       await Promise.all([
@@ -462,7 +492,8 @@ export class PaymentService {
     const organizerRoyalty = Math.floor(
       (ticket.resalePrice * ticket.event.royaltyFeeBps) / 10000,
     );
-    const sellerProceeds = ticket.resalePrice - (platformCut + organizerRoyalty);
+    const sellerProceeds =
+      ticket.resalePrice - (platformCut + organizerRoyalty);
 
     const newCode = await this.generateUniqueTicketCode();
     await this.prisma.ticket.update({
@@ -524,7 +555,10 @@ export class PaymentService {
       totalSellerProceeds = sellerProceeds;
     }
 
-    await this.updateWalletBalance(tickets[0].event.organizerId, totalOrganizerRoyalty);
+    await this.updateWalletBalance(
+      tickets[0].event.organizerId,
+      totalOrganizerRoyalty,
+    );
 
     const platformAdmin = await this.prisma.user.findUnique({
       where: { email: process.env.ADMIN_EMAIL },
@@ -602,7 +636,9 @@ export class PaymentService {
 
   // ===================== Transaction Verification =====================
   // eslint-disable-next-line @typescript-eslint/require-await
-  private async verifyKoraTransaction(koraPayload: any): Promise<VerifyResponse> {
+  private async verifyKoraTransaction(
+    koraPayload: any,
+  ): Promise<VerifyResponse> {
     if (!koraPayload?.data) {
       throw new BadRequestException('Missing Kora payload for verification');
     }
@@ -665,8 +701,7 @@ export class PaymentService {
 
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
-    const providerKey =
-      process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const providerKey = process.env.GATEWAY?.toLowerCase() || 'aggregator';
     const verifyProvider = this.providers.get(providerKey);
 
     if (!verifyProvider && providerKey !== 'kora') {
@@ -681,7 +716,10 @@ export class PaymentService {
       );
       response = await this.verifyKoraTransaction(koraPayload);
     } else {
-      response = await this.verifyAggregatorTransaction(reference, verifyProvider!);
+      response = await this.verifyAggregatorTransaction(
+        reference,
+        verifyProvider!,
+      );
     }
 
     const txnStatus = this.mapProviderStatusToTransactionStatus(

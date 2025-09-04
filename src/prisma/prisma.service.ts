@@ -43,6 +43,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.transaction;
   }
 
+  get eventPayout(){
+    return this.prisma.eventPayout
+  }
+
   get transactionTicket() {
     return this.prisma.transactionTicket;
   }

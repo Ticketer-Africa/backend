@@ -6,7 +6,6 @@ import {
   Post,
   Get,
   Logger,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
@@ -81,16 +80,11 @@ export class PaymentController {
 
     const reference = payload.data.reference;
 
-    if (!reference) {
-      this.logger.error('Webhook payload missing reference');
-      throw new BadRequestException('Transaction reference is required');
-    }
-
     try {
       const result = await this.paymentService.verifyTransaction(
         reference,
         provider,
-        provider === 'aggregator' ? payload : undefined,
+        payload,
       );
 
       this.logger.log(
