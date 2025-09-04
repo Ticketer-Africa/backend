@@ -15,6 +15,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { PaymentService } from './payment/payment.service';
 import { PaymentModule } from './payment/payment.module';
 import { HttpModule } from '@nestjs/axios';
+import { AdminModule } from './admin/admin.module';
 import { WalletModule } from './wallet/wallet.module';
 import { MailService } from './mail/mail.service';
 import { KoraPayinProvider } from './payment/providers/kora.provider';
@@ -41,6 +42,7 @@ import { AggregatorPayinProvider } from './payment/providers/aggregator.provider
     PaymentModule,
     HttpModule,
     WalletModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
@@ -53,4 +55,4 @@ import { AggregatorPayinProvider } from './payment/providers/aggregator.provider
     AggregatorPayinProvider,
   ],
 })
-export class AppModule {}
+export class AppModule { }
