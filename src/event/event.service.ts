@@ -315,6 +315,8 @@ export class EventService {
 
     try {
       await this.deleteBannerIfExists(event.bannerUrl!);
+      await this.prisma.ticketCategory.deleteMany({ where: { eventId: id } });
+      await this.prisma.eventPayout.deleteMany({ where: { eventId: id } });
       await this.prisma.event.delete({ where: { id } });
 
       return { message: 'Event deleted successfully', eventId: id };

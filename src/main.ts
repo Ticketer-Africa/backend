@@ -10,6 +10,8 @@ async function bootstrap() {
   const allowedOrigins = [
     'http://localhost:3000',
     'https://ticketer-app-staging.vercel.app',
+    'https://github.com/Ticketer-Africa/backend.git',
+    'frontend-git-staging-mayokun-s-projects.vercel.app',
   ];
   app.enableCors({
     origin: (origin, callback) => {
