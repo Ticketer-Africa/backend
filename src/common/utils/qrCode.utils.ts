@@ -1,4 +1,4 @@
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 
 // Define the QRTicketData interface
 export interface QRTicketData {
