@@ -49,12 +49,15 @@ export class AdminService {
   async toggleEvent(eventId: string) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
+      select: { isActive: true },
     });
     if (!event) return { message: 'Event not found' };
+
     const updated = await this.prisma.event.update({
       where: { id: eventId },
       data: { isActive: !event.isActive },
     });
+
     return { message: 'Event status updated', event: updated };
   }
 
@@ -67,17 +70,14 @@ export class AdminService {
         tickets: { include: { ticket: true } },
       },
     });
+    // ✅ Includes handle it in one query
   }
 
   listOrganizers() {
     return this.prisma.user.findMany({
       where: { role: 'ORGANIZER' },
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        createdAt: true,
+      include: {
         events: {
           select: { id: true, name: true, isActive: true },
           orderBy: { createdAt: 'desc' },
@@ -87,15 +87,9 @@ export class AdminService {
   }
 
   async getUserDetails(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    return this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        isVerified: true,
-        createdAt: true,
+      include: {
         tickets: {
           include: {
             event: { select: { id: true, name: true, date: true } },
@@ -112,56 +106,43 @@ export class AdminService {
         },
       },
     });
-    return user || { message: 'User not found' };
   }
 
   async getPlatformRevenue() {
-    const [purchaseSum, resaleSum] = await Promise.all([
-      this.prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { type: 'PURCHASE', status: 'SUCCESS' },
-      }),
-      this.prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { type: 'RESALE', status: 'SUCCESS' },
-      }),
-    ]);
+    const result = await this.prisma.transaction.aggregate({
+      _sum: { amount: true },
+      where: { status: 'SUCCESS' },
+    });
 
-    const totalAmount =
-      (purchaseSum._sum.amount ?? 0) + (resaleSum._sum.amount ?? 0);
+    const totalAmount = result._sum.amount ?? 0;
     const platformRevenue = Math.round(totalAmount * 0.05);
 
-    return {
-      totalAmount,
-      platformRevenue,
-    };
+    return { totalAmount, platformRevenue };
   }
 
-  // 🚀 New Method: Daily Revenue & Tickets Sold
   async getDailyRevenueAndTickets() {
-    // Group transactions by date (only SUCCESS ones)
+    // Transactions grouped by day
     const dailyTransactions = await this.prisma.transaction.groupBy({
       by: ['createdAt'],
       _sum: { amount: true },
       where: { status: 'SUCCESS' },
     });
 
-    // Group tickets by date
+    // Tickets grouped by day
     const dailyTickets = await this.prisma.ticket.groupBy({
       by: ['createdAt'],
       _count: { id: true },
     });
 
-    // Merge results by day (YYYY-MM-DD)
     const revenueMap: Record<
       string,
       { totalRevenue: number; platformRevenue: number }
     > = {};
 
     dailyTransactions.forEach((txn) => {
-      const date = txn.createdAt.toISOString().split('T')[0]; // extract date only
+      const date = txn.createdAt.toISOString().split('T')[0];
       const totalRevenue = txn._sum.amount ?? 0;
-      const platformRevenue = Math.round(totalRevenue * 0.05); // 5% cut
+      const platformRevenue = Math.round(totalRevenue * 0.05);
       revenueMap[date] = { totalRevenue, platformRevenue };
     });
 
@@ -171,13 +152,11 @@ export class AdminService {
       ticketMap[date] = t._count.id;
     });
 
-    // Collect all unique dates
     const allDates = new Set([
       ...Object.keys(revenueMap),
       ...Object.keys(ticketMap),
     ]);
 
-    // Build unified response
     return Array.from(allDates).map((date) => ({
       date,
       totalRevenue: revenueMap[date]?.totalRevenue ?? 0,
@@ -185,19 +164,19 @@ export class AdminService {
       ticketsSold: ticketMap[date] ?? 0,
     }));
   }
+
   async getEventCategories() {
-  const categories = await this.prisma.event.groupBy({
-    by: ['category'],
-    _count: { category: true },
-  });
+    const categories = await this.prisma.event.groupBy({
+      by: ['category'],
+      _count: { category: true },
+    });
 
-  const total = categories.reduce((acc, c) => acc + c._count.category, 0);
+    const total = categories.reduce((acc, c) => acc + c._count.category, 0);
 
-  return categories.map((c) => ({
-    name: c.category,
-    value: ((c._count.category / total) * 100).toFixed(2), // percentage
-    count: c._count.category, // optional if you want raw counts too
-  }));
-}
-
+    return categories.map((c) => ({
+      name: c.category,
+      value: ((c._count.category / total) * 100).toFixed(2),
+      count: c._count.category,
+    }));
+  }
 }

@@ -78,7 +78,6 @@ export class AdminController {
     return this.adminService.getPlatformRevenue();
   }
 
-  // 🚀 New Endpoint: Daily Revenue & Tickets Sold
   @Get('revenue/daily')
   @HttpCode(200)
   @ApiOperation({ summary: 'Get daily revenue & tickets sold' })
