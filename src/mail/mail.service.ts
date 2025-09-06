@@ -43,7 +43,6 @@ export class MailService {
             to,
             subject,
             html,
-            from: `"Ticketer" <${process.env.MAIL_USER}>`,
           })
           .pipe(
             retry(2),
