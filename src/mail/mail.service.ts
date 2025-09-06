@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, retry, throwError } from 'rxjs';
 import {
   generateOtpTemplate,
   registrationTemplate,
@@ -38,12 +38,17 @@ export class MailService {
   private async sendMail(to: string, subject: string, html: string) {
     try {
       await firstValueFrom(
-        this.httpService.post(`${process.env.MAIL_SERVICE_URL}/send`, {
-          to,
-          subject,
-          html,
-          from: `"Ticketer" <${process.env.MAIL_USER}>`,
-        }),
+        this.httpService
+          .post(`${process.env.MAIL_SERVICE_URL}/send`, {
+            to,
+            subject,
+            html,
+            from: `"Ticketer" <${process.env.MAIL_USER}>`,
+          })
+          .pipe(
+            retry(2),
+            catchError((err) => throwError(() => new Error(err.message))),
+          ),
       );
 
       this.logger.log(`Mail queued to ${to} | Subject: ${subject}`);
