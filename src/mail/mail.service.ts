@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import { firstValueFrom } from 'rxjs';
 import {
   generateOtpTemplate,
   registrationTemplate,
@@ -23,35 +23,32 @@ import {
   ticketResaleTemplate,
 } from './templates/ticket-purchase.template';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { HttpService } from '@nestjs/axios';
 
 @Injectable()
 export class MailService {
-  private transporter;
   private logger = new Logger(MailService.name);
 
-  constructor(private readonly cloudinary: CloudinaryService) {
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
-  }
+  constructor(
+    private readonly cloudinary: CloudinaryService,
+    private httpService: HttpService,
+  ) {}
 
+  // inside your MailService
   private async sendMail(to: string, subject: string, html: string) {
-    const mailOptions = {
-      from: `"Ticketer" <${process.env.MAIL_USER}>`,
-      to,
-      subject,
-      html,
-    };
-
     try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Mail sent to ${to} | Subject: ${subject}`);
+      await firstValueFrom(
+        this.httpService.post(`${process.env.MAIL_SERVICE_URL}/send`, {
+          to,
+          subject,
+          html,
+          from: `"Ticketer" <${process.env.MAIL_USER}>`,
+        }),
+      );
+
+      this.logger.log(`Mail queued to ${to} | Subject: ${subject}`);
     } catch (error) {
-      this.logger.error(`Failed to send mail to ${to}`, error.stack);
+      this.logger.error(`Failed to queue mail to ${to}`, error.message);
       throw error;
     }
   }
