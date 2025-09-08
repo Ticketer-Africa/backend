@@ -137,7 +137,9 @@ export class TicketService {
     type: 'PURCHASE' | 'RESALE' = 'PURCHASE',
   ): Promise<string> {
     const redirectUrl = process.env.FRONTEND_URL
-      ? `${process.env.FRONTEND_URL}/events/` + event.slug
+      ? type === 'PURCHASE'
+        ? `${process.env.FRONTEND_URL}/events/` + event.slug
+        : `${process.env.FRONTEND_URL}/my-tickets`
       : undefined;
 
     const paymentDto: PaymentDTO = {
