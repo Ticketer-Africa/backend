@@ -23,17 +23,39 @@ export class AdminService {
   }
 
   listUsers() {
-    return this.prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isVerified: true,
-        createdAt: true,
+     return this.prisma.user.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      isVerified: true,
+      createdAt: true,
+
+      // pull related data
+      tickets: {
+        select: { eventId: true },
       },
-    });
+      transactions: {
+        where: { status: 'SUCCESS' },
+        select: { amount: true },
+      },
+    },
+  }).then(users =>
+    users.map(u => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      isVerified: u.isVerified,
+      createdAt: u.createdAt,
+
+      // compute values from related data
+      eventsCount: new Set(u.tickets.map(t => t.eventId)).size,
+      totalSpent: u.transactions.reduce((sum, tx) => sum + tx.amount, 0),
+    }))
+  );
   }
 
   listEvents() {
