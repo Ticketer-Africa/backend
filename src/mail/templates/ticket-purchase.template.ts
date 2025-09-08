@@ -120,7 +120,7 @@ export function ticketPurchaseBuyerTemplate(
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -168,7 +168,7 @@ export function ticketPurchaseBuyerTemplate(
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -275,7 +275,7 @@ export function ticketPurchaseOrganizerTemplate(
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -322,7 +322,7 @@ export function ticketPurchaseOrganizerTemplate(
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -431,7 +431,7 @@ export function ticketPurchaseAdminTemplate(
                     <a href="https://ticketer.com/admin-dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Admin Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -478,7 +478,7 @@ export function ticketPurchaseAdminTemplate(
                       💰 Monitor platform earnings in your wallet
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -612,7 +612,7 @@ export function ticketResaleBuyerTemplate(
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -660,7 +660,7 @@ export function ticketResaleBuyerTemplate(
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -767,7 +767,7 @@ export function ticketResaleSellerTemplate(
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -814,7 +814,7 @@ export function ticketResaleSellerTemplate(
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -921,7 +921,7 @@ export function ticketResaleOrganizerTemplate(
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -968,7 +968,7 @@ export function ticketResaleOrganizerTemplate(
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -1079,7 +1079,7 @@ export function ticketResaleAdminTemplate(
                     <a href="https://ticketer.com/admin-dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Admin Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -1126,7 +1126,7 @@ export function ticketResaleAdminTemplate(
                       💰 Monitor platform earnings in your wallet
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
@@ -1214,7 +1214,7 @@ export function ticketResaleTemplate(name: string, event: string): string {
                     <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
                       📱 View in Dashboard
                     </a>
-                    <a href="mailto:support@ticketer.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
                       📧 Contact Support
                     </a>
                   </div>
@@ -1261,7 +1261,7 @@ export function ticketResaleTemplate(name: string, event: string): string {
                       💰 Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">support@ticketer.com</a>
+                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
                   <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
