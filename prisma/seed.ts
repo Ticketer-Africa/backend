@@ -27,7 +27,7 @@ const mkEventName = (cat: string, idx: number) =>
 const toDecimalString = (n: number) => n.toFixed(2);
 
 async function main() {
-  console.log('🌱 Starting lightweight seed...');
+  console.log('🌱 Starting enhanced seed with transactions...');
 
   const hashedPassword = await bcrypt.hash('password123', 10);
 
@@ -43,6 +43,7 @@ async function main() {
       isVerified: true,
       wallet: { create: { balance: toDecimalString(500000) } },
     },
+    include: { wallet: true },
   });
 
   // 2) Create 5 organizers
@@ -57,6 +58,7 @@ async function main() {
         isVerified: true,
         wallet: { create: { balance: toDecimalString(randInt(5000, 50000)) } },
       },
+      include: { wallet: true },
     });
     organizers.push(organizer);
   }
@@ -73,6 +75,7 @@ async function main() {
         isVerified: true,
         wallet: { create: { balance: toDecimalString(randInt(0, 20000)) } },
       },
+      include: { wallet: true },
     });
     users.push(user);
   }
@@ -100,17 +103,18 @@ async function main() {
           royaltyFeeBps: pick([500, 1000]),
         },
       });
-      allEvents.push(event);
+      allEvents.push({ ...event, organizer });
     }
   }
 
   // 5) Create 1-2 ticket categories per event
+  const allTicketCategories: any[] = [];
   for (const event of allEvents) {
     const catCount = randInt(1, 2);
     for (let c = 0; c < catCount; c++) {
       const name = pick(['VIP', 'Regular', 'Standard']);
       const price = pick([1500, 3000, 5000]);
-      await prisma.ticketCategory.create({
+      const category = await prisma.ticketCategory.create({
         data: {
           name,
           price,
@@ -119,10 +123,58 @@ async function main() {
           minted: 0,
         },
       });
+      allTicketCategories.push({ ...category, event });
     }
   }
 
-  console.log('✅ Seed complete: 20 users, a few events, and ticket categories created.');
+  // 6) Simulate transactions (buyers purchase tickets)
+  for (const category of allTicketCategories) {
+    const ticketsToBuy = randInt(5, Math.min(15, category.maxTickets));
+    for (let i = 0; i < ticketsToBuy; i++) {
+      const buyer = pick(buyers);
+      const amount = category.price;
+
+      // Decrement buyer wallet
+      await prisma.wallet.update({
+        where: { userId: buyer.id },
+        data: { balance: { decrement: amount } },
+      });
+
+      // Calculate organizer cut
+      const organizerCut = Math.floor(amount * (category.event.primaryFeeBps / 10000));
+      await prisma.wallet.update({
+        where: { userId: category.event.organizerId },
+        data: { balance: { increment: organizerCut } },
+      });
+
+      // Platform cut goes to admin
+      const platformCut = amount - organizerCut;
+      await prisma.wallet.update({
+        where: { userId: admin.id },
+        data: { balance: { increment: platformCut } },
+      });
+
+      // Increment minted tickets
+      await prisma.ticketCategory.update({
+        where: { id: category.id },
+        data: { minted: { increment: 1 } },
+      });
+
+      // Create transaction record
+      await prisma.transaction.create({
+        data: {
+          reference: `TX-${Date.now()}-${randInt(1000, 9999)}`,
+          userId: buyer.id,
+          eventId: category.event.id,
+          type: 'PURCHASE',
+          amount,
+          status: 'SUCCESS',
+        },
+      });
+    }
+  }
+
+  console.log('✅ Enhanced seed complete: users, events, tickets, and transactions created.');
 }
 
 main()
