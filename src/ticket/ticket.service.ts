@@ -31,6 +31,7 @@ export class TicketService {
         id: true,
         name: true,
         isActive: true,
+        slug: true,
         date: true,
         organizerId: true,
         ticketCategories: true,
@@ -128,7 +129,7 @@ export class TicketService {
 
   private async initiatePayment(
     user: { id: string; email: string; name?: string },
-    event: { id: string; name: string },
+    event: { id: string; name: string; slug: string },
     totalAmount: number,
     reference: string,
     ticketIds: string[],
@@ -136,7 +137,7 @@ export class TicketService {
     type: 'PURCHASE' | 'RESALE' = 'PURCHASE',
   ): Promise<string> {
     const redirectUrl = process.env.FRONTEND_URL
-      ? `${process.env.FRONTEND_URL}${clientPage}`
+      ? `${process.env.FRONTEND_URL}/events/` + event.slug
       : undefined;
 
     const paymentDto: PaymentDTO = {
