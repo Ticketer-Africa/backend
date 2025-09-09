@@ -18,26 +18,25 @@ export function eventCreationTemplate(name: string, eventName: string): string {
       <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: transparent;">
         <tr>
           <td style="padding: 40px 20px;">
-            
-            <!-- Header -->
-            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 8px 8px 0 0; border-bottom: 1px solid #e0e0e0;">
-              <tr>
-                <td style="padding: 32px 40px; text-align: center;">
-                  <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px;">
-                    <img 
-                      src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-                      alt="Ticketer Logo" 
-                      width="32" 
-                      height="32" 
-                      style="display: block; max-width: 32px; height: auto;"
-                    />
-                    <h1 style="font-size: 24px; color: #333333; margin: 0; font-weight: 600; letter-spacing: -0.3px;">
-                      Ticketer
-                    </h1>
-                  </div>
-                </td>
-              </tr>
-            </table>
+<!-- Header -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFFFF; border-radius: 12px 12px 0 0; border-bottom: 1px solid #e0e0e0;">
+  <tr>
+    <td style="padding: 40px 48px; text-align: center;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
+        <img 
+          src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
+          alt="Ticketer Logo" 
+          width="32" 
+          height="32" 
+          style="display: block; max-width: 32px; height: auto;"
+        />
+        <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
+          Ticketer
+        </h1>
+      </div>
+    </td>
+  </tr>
+</table>
 
             <!-- Main content -->
             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 0 0 8px 8px;">
@@ -105,9 +104,6 @@ export function eventCreationTemplate(name: string, eventName: string): string {
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
                       Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
-                    </p>
-                    <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      Manage your funds effortlessly with our wallet system
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
