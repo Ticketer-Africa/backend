@@ -7,101 +7,86 @@ export function registrationTemplate(name: string): string {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
       <title>Welcome to Ticketer</title>
-      <!--[if mso]>
-      <noscript>
-        <xml>
-          <o:OfficeDocumentSettings>
-            <o:PixelsPerInch>96</o:PixelsPerInch>
-          </o:OfficeDocumentSettings>
-        </xml>
-      </noscript>
-      <![endif]-->
     </head>
-    <body style="margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; min-height: 100vh;">
+    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
       <div style="display: none; max-height: 0; overflow: hidden; font-size: 1px; line-height: 1px; color: transparent;">
-        Welcome to Ticketer Africa, ${name}! Start exploring events or create your own.
+        Welcome to Ticketer, ${name}! Verify your account and start exploring events.
       </div>
 
       <!-- Main container -->
-      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 640px; margin: 0 auto; background-color: transparent;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: transparent;">
         <tr>
           <td style="padding: 40px 20px;">
             
-            <!-- Header with logo + text -->
-<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 16px 16px 0 0; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
-  <tr>
-    <td style="padding: 32px 40px; text-align: center;">
-      <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px;">
-        <img 
-          src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
-          width="40" 
-          height="40" 
-          style="display: block; max-width: 40px; height: auto;"
-        />
-        <h1 style="font-size: 32px; color: #1E88E5; margin: 0; font-weight: 700; letter-spacing: -0.5px;">
-          Ticketer
-        </h1>
-      </div>
-
-      <p style="color: rgba(255,255,255,0.85); font-size: 16px; margin: 12px 0 0 0; font-weight: 300;">
-        Your trusted ticketing partner
-      </p>
-    </td>
-  </tr>
-</table>
-
+            <!-- Header -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 8px 8px 0 0; border-bottom: 1px solid #e0e0e0;">
+              <tr>
+                <td style="padding: 32px 40px; text-align: center;">
+                  <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px;">
+                    <img 
+                      src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
+                      alt="Ticketer Logo" 
+                      width="32" 
+                      height="32" 
+                      style="display: block; max-width: 32px; height: auto;"
+                    />
+                    <h1 style="font-size: 24px; color: #333333; margin: 0; font-weight: 600; letter-spacing: -0.3px;">
+                      Ticketer
+                    </h1>
+                  </div>
+                </td>
+              </tr>
+            </table>
 
             <!-- Main content -->
-            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 0 0 16px 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 0 0 8px 8px;">
               <tr>
                 <td style="padding: 40px;">
                   
                   <!-- Welcome message -->
                   <div style="text-align: center; margin-bottom: 32px;">
-                    <div style="display: inline-block; background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); padding: 16px; border-radius: 50%; margin-bottom: 16px;">
-                      <span style="font-size: 24px;">🎉</span>
-                    </div>
-                    <h2 style="font-size: 28px; color: #1a1a1a; margin: 0 0 8px 0; font-weight: 700; line-height: 1.2;">
-                      Welcome aboard, ${name}! 
+                    <h2 style="font-size: 24px; color: #333333; margin: 0 0 16px 0; font-weight: 600;">
+                      Welcome, ${name}!
                     </h2>
-                    <p style="font-size: 18px; color: #666666; margin: 0; font-weight: 400;">
-                      Thanks for joining <strong style="color: #1e3c72;">Ticketer</strong>! You're now part of our vibrant community.
+                    <p style="font-size: 16px; color: #666666; margin: 0; font-weight: 400;">
+                      Thank you for joining <strong>Ticketer</strong>! You're now part of our vibrant event ticketing community.
                     </p>
                   </div>
 
                   <!-- Get started section -->
-                  <div style="background: linear-gradient(135deg, #f8f9ff 0%, #e8f0fe 100%); border: 2px solid #e3f2fd; border-radius: 12px; padding: 24px; margin-bottom: 32px; position: relative; overflow: hidden;">
-                    <div style="position: absolute; top: -50px; right: -50px; width: 100px; height: 100px; background: radial-gradient(circle, rgba(30,60,114,0.1) 0%, transparent 70%); border-radius: 50%;"></div>
-                    <h3 style="font-size: 20px; color: #1e3c72; margin: 0 0 16px 0; font-weight: 600;">
-                      🚀 Get Started
+                  <div style="background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                    <h3 style="font-size: 18px; color: #333333; margin: 0 0 12px 0; font-weight: 600;">
+                      Get Started
                     </h3>
-                    <p style="font-size: 16px; color: #555; margin: 8px 0; line-height: 1.5;">
-                      Create, manage, and attend amazing events with ease. Explore events or set up your own in your dashboard.
+                    <p style="font-size: 14px; color: #666666; margin: 0; line-height: 1.5;">
+                      Verify your account with OTP to unlock all features. Explore events, create your own, or manage your tickets and funds in your dashboard.
                     </p>
                   </div>
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease; margin: 0 8px;">
-                      📱 Go to Dashboard
+                    <a href="https://ticketer.com/verify-otp" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      Verify Account
                     </a>
-                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background: transparent; color: #667eea; text-decoration: none; padding: 16px 32px; border: 2px solid #667eea; border-radius: 50px; font-size: 16px; font-weight: 600; transition: all 0.3s ease; margin: 0 8px;">
-                      📧 Contact Support
+                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      Go to Dashboard
+                    </a>
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      Contact Support
                     </a>
                   </div>
 
                   <!-- Important info -->
-                  <div style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border-left: 4px solid #f39c12; border-radius: 8px; padding: 20px; margin: 32px 0;">
-                    <h4 style="color: #856404; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">
-                      📋 Important Information
+                  <div style="border-left: 3px solid #1E88E5; padding: 16px 20px; margin: 32px 0; background-color: #f9f9f9;">
+                    <h4 style="color: #333333; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">
+                      What to do next:
                     </h4>
-                    <ul style="color: #856404; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
+                    <ul style="color: #666666; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
                       <li>Verify your account with OTP to access all features</li>
                       <li>Use your dashboard to manage events and tickets</li>
                       <li>Explore our wallet system for seamless transactions</li>
-                      <li>Contact support for any questions</li>
+                      <li>Contact support if you need assistance</li>
                     </ul>
                   </div>
 
@@ -113,34 +98,25 @@ export function registrationTemplate(name: string): string {
             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 32px;">
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
-                  <p style="font-size: 14px; color: rgba(255,255,255,0.8); margin: 0 0 12px 0; font-weight: 300;">
+                  <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
                     – The Ticketer Team
                   </p>
-                  <div style="margin: 20px 0;">
-                    <a href="#" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                      <div style="background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; text-align: center; line-height: 40px; color: white; font-size: 16px;">f</div>
-                    </a>
-                    <a href="#" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                      <div style="background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; text-align: center; line-height: 40px; color: white; font-size: 16px;">t</div>
-                    </a>
-                    <a href="#" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                      <div style="background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; text-align: center; line-height: 40px; color: white; font-size: 16px;">@</div>
-                    </a>
-                  </div>
-                  <div style="background: rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin: 20px 0; backdrop-filter: blur(10px);">
-                    <p style="color: rgba(255,255,255,0.9); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      🎪 <strong>Discover events, buy tickets, and resell securely</strong> with <a href="https://ticketer.com" style="color: #ffffff; text-decoration: underline; font-weight: 600;">Ticketer</a>
+                  
+                  <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                    <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
                     </p>
-                    <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      💰 Manage your funds effortlessly with our wallet system
+                    <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
+                      Manage your funds effortlessly with our wallet system
                     </p>
-                    <p style="color: rgba(255,255,255,0.8); margin: 8px 0; font-size: 14px; line-height: 1.5;">
-                      ❓ Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #ffffff; text-decoration: underline; font-weight: 500;">ticketerafrica@gmail.com</a>
+                    <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
+                      Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
                     </p>
                   </div>
-                  <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 16px 0 0 0; line-height: 1.4;">
+                  
+                  <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
                     © 2025 Ticketer. All rights reserved.<br>
-                    This email was sent to you because you registered on our platform.
+                    This email was sent because you registered on our platform.
                   </p>
                 </td>
               </tr>
