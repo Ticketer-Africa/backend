@@ -28,21 +28,30 @@ export function registrationTemplate(name: string): string {
         <tr>
           <td style="padding: 40px 20px;">
             
-            <!-- Header with logo -->
-            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 16px 16px 0 0; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
-              <tr>
-                <td style="padding: 32px 40px; text-align: center; position: relative;">
-                  <div style="position: absolute; top: -5px; left: 20px; width: 10px; height: 10px; background: rgba(255,255,255,0.2); border-radius: 50%;"></div>
-                  <div style="position: absolute; top: 15px; right: 30px; width: 6px; height: 6px; background: rgba(255,255,255,0.15); border-radius: 50%;"></div>
-                  <h1 style="font-size: 32px; color: #ffffff; margin: 0; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.2); letter-spacing: -0.5px;">
-                    🎟️ Ticketer
-                  </h1>
-                  <p style="color: rgba(255,255,255,0.85); font-size: 16px; margin: 8px 0 0 0; font-weight: 300;">
-                    Your trusted ticketing partner
-                  </p>
-                </td>
-              </tr>
-            </table>
+            <!-- Header with logo + text -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 16px 16px 0 0; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
+  <tr>
+    <td style="padding: 32px 40px; text-align: center;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px;">
+        <img 
+          src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
+          alt="Ticketer Logo" 
+          width="40" 
+          height="40" 
+          style="display: block; max-width: 40px; height: auto;"
+        />
+        <h1 style="font-size: 32px; color: #1E88E5; margin: 0; font-weight: 700; letter-spacing: -0.5px;">
+          Ticketer
+        </h1>
+      </div>
+
+      <p style="color: rgba(255,255,255,0.85); font-size: 16px; margin: 12px 0 0 0; font-weight: 300;">
+        Your trusted ticketing partner
+      </p>
+    </td>
+  </tr>
+</table>
+
 
             <!-- Main content -->
             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 0 0 16px 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
