@@ -16,7 +16,6 @@ async function bootstrap() {
   ];
   app.enableCors({
     origin: (origin, callback) => {
-      console.log('Request Origin:', origin); // Debug
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, origin || '*'); // Return the request's origin or '*' if no origin
       } else {
@@ -31,7 +30,6 @@ async function bootstrap() {
   // Explicitly handle OPTIONS requests (optional, for robustness)
   app.use((req, res, next) => {
     if (req.method === 'OPTIONS') {
-      console.log('Handling OPTIONS request for:', req.url); // Debug
       const origin = req.headers.origin;
       if (!origin || allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -84,7 +82,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 5000;
   await app.listen(port);
-  console.log(`Server running on port ${port}`);
 }
 
 bootstrap().catch((err) => console.error('Bootstrap error:', err));
