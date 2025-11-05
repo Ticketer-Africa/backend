@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import {
   BadRequestException,
   Injectable,
@@ -8,63 +9,121 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailService } from 'src/mail/mail.service';
-import { InitiateDto } from './dto/initiate.dto';
 import { randomBytes } from 'crypto';
 import { generateVerificationCode } from 'src/common/utils/qrCode.utils';
+import {
+  PaymentDTO,
+  PayinResponse,
+  validateDTO,
+  generateReference,
+  VerifyResponse,
+  WithdrawalDTO,
+  WithdrawalResponse,
+} from './dto/initiate.dto';
+import { IPayinProvider } from './interface/payin-provider.interface';
+import { KoraPayinProvider } from './providers/kora.provider';
+import { AggregatorPayinProvider } from './providers/aggregator.provider';
+import { TransactionStatus } from '@prisma/client';
+
+enum TransactionType {
+  PURCHASE = 'PURCHASE',
+  RESALE = 'RESALE',
+}
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly paymentBaseUrl = process.env.PAYMENT_GATEWAY_URL;
-  private readonly paymentSecretKey = process.env.PAYMENT_GATEWAY_TEST_SECRET;
+  private readonly providers: Map<string, IPayinProvider> = new Map();
 
   constructor(
     private httpService: HttpService,
     private prisma: PrismaService,
     private mailService: MailService,
-  ) {}
+    private koraProvider: KoraPayinProvider,
+    private aggregatorProvider: AggregatorPayinProvider,
+  ) {
+    this.providers.set('kora', this.koraProvider);
+    this.providers.set('aggregator', this.aggregatorProvider);
+  }
 
-  // Private Helpers
-  private async callPaymentGateway<T>(
-    method: 'get' | 'post',
-    url: string,
-    data?: any,
-  ): Promise<T> {
+  // ===================== Payment Initiation =====================
+  async initiatePayin(dto: PaymentDTO): Promise<PayinResponse> {
+    if (!dto.reference) {
+      dto.reference = generateReference();
+    }
+    validateDTO(dto);
+
+    const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const providerInstance = this.providers.get(selectedProvider);
+    if (!providerInstance) {
+      this.logger.error(`Unsupported provider: ${selectedProvider}`);
+      throw new BadRequestException(
+        `Unsupported provider: ${selectedProvider}`,
+      );
+    }
+
+    this.logger.log(
+      `Routing payin initiation to provider: ${selectedProvider}`,
+    );
     try {
-      const response = await this.httpService.axiosRef[method](url, data, {
-        headers: { Authorization: `Bearer ${this.paymentSecretKey}` },
-      });
-      return response?.data;
-    } catch (error) {
-      this.logger.error(`Payment gateway error: ${error.message}`, error.stack);
+      return await providerInstance.initiatePayin(dto);
+    } catch (err) {
+      this.logger.error(`Failed to initiate payin: ${err.message}`);
       throw new InternalServerErrorException(
-        error?.response?.data?.message || 'Payment gateway request failed',
+        `Failed to initiate payin: ${err.message}`,
       );
     }
   }
 
-  private async findAndLockTransaction(reference: string) {
+  // ===================== Transaction Management =====================
+  // eslint-disable-next-line @typescript-eslint/require-await
+  private async findAndLockTransaction(
+    reference: string,
+    status: TransactionStatus,
+  ) {
+    if (!reference) {
+      this.logger.error('Transaction reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const txn = await tx.transaction.findUnique({
         where: { reference },
-        include: {
-          event: { include: { organizer: true, ticketCategories: true } },
+        select: {
+          reference: true,
+          userId: true,
+          eventId: true,
+          amount: true,
+          type: true,
+          status: true,
           tickets: {
-            include: { ticket: { include: { ticketCategory: true } } },
+            select: { ticket: { select: { id: true } } },
           },
-          user: true,
+          event: {
+            select: {
+              id: true,
+              name: true,
+              organizerId: true,
+              primaryFeeBps: true,
+              organizer: {
+                select: { id: true, email: true, name: true },
+              },
+            },
+          },
+          user: { select: { id: true, email: true, name: true } },
         },
       });
       if (!txn) throw new NotFoundException('Transaction not found');
 
-      if (txn.status === 'SUCCESS') {
+      if (txn.status === status) {
         return { alreadyProcessed: true, txn };
       }
 
       await tx.transaction.update({
         where: { reference },
-        data: { status: 'SUCCESS' },
+        data: { status },
       });
+
       return { alreadyProcessed: false, txn };
     });
   }
@@ -83,6 +142,23 @@ export class PaymentService {
     await this.prisma.wallet.update({
       where: { userId },
       data: { balance: { increment: amount } },
+      select: { userId: true, balance: true },
+    });
+  }
+
+  private async updateEventPayoutBalance(
+    eventId: string,
+    organizerId: string,
+    amount: number,
+  ) {
+    await this.prisma.eventPayout.upsert({
+      where: { eventId },
+      update: { balance: { increment: amount } },
+      create: {
+        eventId,
+        organizerId,
+        balance: amount,
+      },
     });
   }
 
@@ -91,51 +167,20 @@ export class PaymentService {
       where: { userId: adminId },
       create: { userId: adminId, balance: amount },
       update: { balance: { increment: amount } },
+      select: { userId: true, balance: true },
     });
   }
 
-  private async createTicketsForPurchase(
-    txn: any,
-    ticketCategoryId: string,
-    ticketCount: number,
-  ): Promise<string[]> {
-    const ticketIds: string[] = [];
-    for (let i = 0; i < ticketCount; i++) {
-      const ticket = await this.prisma.ticket.create({
-        data: {
-          userId: txn.userId,
-          eventId: txn.eventId,
-          ticketCategoryId,
-          code: await this.generateUniqueTicketCode(),
-        },
-      });
-      ticketIds.push(ticket.id);
-    }
-    return ticketIds;
-  }
-
-  private async linkTicketsToTransaction(
-    reference: string,
-    ticketIds: string[],
-  ) {
-    await this.prisma.transaction.update({
-      where: { reference },
-      data: {
-        tickets: {
-          create: ticketIds.map((id) => ({ ticket: { connect: { id } } })),
-        },
-      },
-    });
-  }
-
+  // ===================== Email and QR Code Helpers =====================
   private generateTicketDetails(
     tickets: any[],
     eventId: string,
     userId: string,
   ) {
-    const ticketDetails = tickets.map((ticket) => {
-      if (!ticket.code)
+    return tickets.map((ticket) => {
+      if (!ticket.code) {
         throw new BadRequestException(`Ticket ${ticket.id} missing code`);
+      }
       return {
         ticketId: ticket.id,
         code: ticket.code,
@@ -154,11 +199,9 @@ export class PaymentService {
         },
       };
     });
-
-    return ticketDetails;
   }
 
-  private async sendPurchaseEmails(
+  async sendPurchaseEmails(
     txn: any,
     ticketDetails: any[],
     platformCut: number,
@@ -166,7 +209,15 @@ export class PaymentService {
     try {
       const platformAdmin = await this.prisma.user.findUnique({
         where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
       });
+
+      if (!txn.event.organizer) {
+        this.logger.error(`Organizer not found for event ${txn.eventId}`);
+        throw new NotFoundException(
+          `Organizer not found for event ${txn.eventId}`,
+        );
+      }
 
       await Promise.all([
         this.mailService.sendTicketPurchaseBuyerMail(
@@ -177,7 +228,7 @@ export class PaymentService {
         ),
         this.mailService.sendTicketPurchaseOrganizerMail(
           txn.event.organizer.email,
-          txn.event.organizer.name,
+          txn.event.organizer.name || 'Unknown',
           txn.event.name,
           ticketDetails.length,
           txn.amount - platformCut,
@@ -186,7 +237,7 @@ export class PaymentService {
         platformAdmin &&
           this.mailService.sendTicketPurchaseAdminMail(
             platformAdmin.email,
-            platformAdmin.name,
+            platformAdmin.name || 'Admin',
             txn.event.name,
             ticketDetails.length,
             platformCut,
@@ -195,11 +246,15 @@ export class PaymentService {
           ),
       ]);
     } catch (err) {
-      this.logger.error(`Failed to send purchase emails`, err.stack);
+      this.logger.error(`Failed to send purchase emails: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to send purchase emails: ${err.message}`,
+      );
     }
   }
 
-  private async processPurchaseFlow(txn: any, ticketIds: string[]) {
+  // ===================== Purchase Flow =====================
+  private async validateTicketsForPurchase(txn: any, ticketIds: string[]) {
     if (!txn.eventId || !txn.event) {
       throw new NotFoundException(
         'Event data missing for purchase transaction',
@@ -212,58 +267,96 @@ export class PaymentService {
 
     const tickets = await this.prisma.ticket.findMany({
       where: { id: { in: ticketIds } },
-      include: { ticketCategory: true },
+      select: {
+        id: true,
+        code: true,
+        ticketCategoryId: true,
+        ticketCategory: { select: { name: true } },
+      },
     });
 
     if (tickets.length !== ticketIds.length) {
       throw new NotFoundException('One or more tickets not found');
     }
 
-    const ticketCategoryId = tickets[0].ticketCategoryId;
-    if (
-      !ticketCategoryId ||
-      tickets.some((t) => t.ticketCategoryId !== ticketCategoryId)
-    ) {
-      throw new BadRequestException(
-        'All tickets must belong to the same category',
+    return tickets;
+  }
+
+  private async updateTicketCategories(tickets: any[]) {
+    const ticketsByCategory = tickets.reduce(
+      (acc, t) => {
+        if (t.ticketCategoryId == null) {
+          throw new BadRequestException(
+            `Ticket ${t.id} missing ticketCategoryId`,
+          );
+        }
+        if (!acc[t.ticketCategoryId]) acc[t.ticketCategoryId] = [];
+        acc[t.ticketCategoryId].push(t);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
+
+    for (const [categoryId, ticketsInCat] of Object.entries(
+      ticketsByCategory,
+    )) {
+      const ticketCategory = await this.prisma.ticketCategory.findUnique({
+        where: { id: categoryId },
+        select: { id: true, name: true, minted: true, maxTickets: true },
+      });
+      if (!ticketCategory) {
+        throw new NotFoundException(`Ticket category ${categoryId} not found`);
+      }
+
+      const typedTickets = ticketsInCat as any[];
+      await this.updateTicketCategoryMintedCount(
+        categoryId,
+        typedTickets.length,
       );
     }
 
-    const ticketCategory = await this.prisma.ticketCategory.findUnique({
-      where: { id: ticketCategoryId },
-    });
-    if (!ticketCategory) {
-      throw new NotFoundException('Ticket category not found');
-    }
+    return ticketsByCategory;
+  }
 
-    const ticketCount = ticketIds.length;
-    await this.updateTicketCategoryMintedCount(ticketCategoryId, ticketCount);
-
+  private async processPurchaseFinancials(txn: any) {
     const platformCut = Math.floor(
       (txn.amount * txn.event.primaryFeeBps) / 10000,
     );
     const organizerProceeds = txn.amount - platformCut;
 
-    await this.updateWalletBalance(txn.event.organizerId, organizerProceeds);
+    // 🔒 Lock funds in EventPayout instead of Wallet
+    await this.updateEventPayoutBalance(
+      txn.eventId,
+      txn.event.organizerId,
+      organizerProceeds,
+    );
 
+    // 💰 Platform admin cut still goes directly to admin wallet
     const platformAdmin = await this.prisma.user.findUnique({
       where: { email: process.env.ADMIN_EMAIL },
+      select: { id: true, email: true, name: true },
     });
     if (platformAdmin) {
       await this.upsertPlatformAdminWallet(platformAdmin.id, platformCut);
     }
 
-    const ticketDetails = this.generateTicketDetails(
-      tickets,
-      txn.eventId,
-      txn.userId,
-    );
+    return platformCut;
+  }
 
-    await this.sendPurchaseEmails(txn, ticketDetails, platformCut);
+  private async processPurchaseFlow(txn: any, ticketIds: string[]) {
+    const tickets = await this.validateTicketsForPurchase(txn, ticketIds);
+    await this.updateTicketCategories(tickets);
+    const platformCut = await this.processPurchaseFinancials(txn);
+    await this.sendPurchaseEmails(
+      txn,
+      this.generateTicketDetails(tickets, txn.eventId, txn.userId),
+      platformCut,
+    );
 
     return ticketIds;
   }
 
+  // ===================== Resale Flow =====================
   private async sendResaleEmails(
     txn: any,
     tickets: any[],
@@ -274,11 +367,22 @@ export class PaymentService {
     try {
       const platformAdmin = await this.prisma.user.findUnique({
         where: { email: process.env.ADMIN_EMAIL },
+        select: { id: true, email: true, name: true },
       });
       const organizer = await this.prisma.user.findUnique({
         where: { id: tickets[0].event.organizerId },
+        select: { id: true, email: true, name: true },
       });
       const seller = tickets[0].user;
+
+      if (!organizer) {
+        this.logger.error(
+          `Organizer not found for event ${tickets[0].event.id}`,
+        );
+        throw new NotFoundException(
+          `Organizer not found for event ${tickets[0].event.id}`,
+        );
+      }
 
       await Promise.all([
         this.mailService.sendTicketResaleBuyerMail(
@@ -295,19 +399,18 @@ export class PaymentService {
           sellerProceeds,
           tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
         ),
-        organizer &&
-          this.mailService.sendTicketResaleOrganizerMail(
-            organizer.email,
-            organizer.name,
-            tickets[0].event.name,
-            tickets.length,
-            organizerRoyalty,
-            tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
-          ),
+        this.mailService.sendTicketResaleOrganizerMail(
+          organizer.email,
+          organizer.name || 'Unknown',
+          tickets[0].event.name,
+          tickets.length,
+          organizerRoyalty,
+          tickets.map((t) => t.ticketCategory?.name || 'Unknown'),
+        ),
         platformAdmin &&
           this.mailService.sendTicketResaleAdminMail(
             platformAdmin.email,
-            platformAdmin.name,
+            platformAdmin.name || 'Admin',
             tickets[0].event.name,
             tickets.length,
             platformCut,
@@ -317,92 +420,161 @@ export class PaymentService {
           ),
       ]);
     } catch (err) {
-      this.logger.error(`Failed to send resale emails`, err.stack);
+      this.logger.error(`Failed to send resale emails: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to send resale emails: ${err.message}`,
+      );
     }
   }
 
-  private async processResaleFlow(txn: any, ticketIds: string[]) {
-    if (!ticketIds.length)
+  private async validateTicketsForResale(txn: any, ticketIds: string[]) {
+    if (!ticketIds.length) {
       throw new BadRequestException(
         'No ticket IDs found for resale transaction',
       );
+    }
 
     const tickets = await this.prisma.ticket.findMany({
       where: { id: { in: ticketIds } },
-      include: { event: true, user: true, ticketCategory: true },
+      select: {
+        id: true,
+        code: true,
+        userId: true,
+        eventId: true,
+        resalePrice: true,
+        accountNumber: true,
+        bankCode: true,
+        event: {
+          select: {
+            id: true,
+            name: true,
+            organizerId: true,
+            resaleFeeBps: true,
+            royaltyFeeBps: true,
+          },
+        },
+        user: { select: { id: true, email: true, name: true } },
+        ticketCategory: { select: { name: true } },
+      },
     });
-    if (tickets.length !== ticketIds.length)
+
+    if (tickets.length !== ticketIds.length) {
       throw new NotFoundException('One or more tickets not found');
+    }
 
     const event = tickets[0].event;
     if (!event) throw new NotFoundException('Event not found');
 
+    return { tickets, event };
+  }
+
+  private async processResaleTicket(
+    ticket: any,
+    txn: any,
+    platformCutAcc: number,
+    organizerRoyaltyAcc: number,
+    sellerProceedsAcc: number,
+  ) {
+    const seller = ticket.user;
+    if (!seller) {
+      throw new NotFoundException(`Seller not found for ticket ${ticket.id}`);
+    }
+
+    if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
+      throw new BadRequestException(
+        `Ticket ${ticket.id} is missing resale price or payout info`,
+      );
+    }
+
+    const platformCut = Math.floor(
+      (ticket.resalePrice * ticket.event.resaleFeeBps) / 10000,
+    );
+    const organizerRoyalty = Math.floor(
+      (ticket.resalePrice * ticket.event.royaltyFeeBps) / 10000,
+    );
+    const sellerProceeds =
+      ticket.resalePrice - (platformCut + organizerRoyalty);
+
+    const newCode = await this.generateUniqueTicketCode();
+    await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        userId: txn.userId,
+        isListed: false,
+        code: newCode,
+        resalePrice: null,
+        resaleCount: { increment: 1 },
+        resaleCommission: platformCut + organizerRoyalty,
+        soldTo: txn.userId,
+      },
+    });
+
+    const withdrawalDto: WithdrawalDTO = {
+      customer: { email: seller.email, name: seller.name },
+      amount: sellerProceeds,
+      currency: 'NGN',
+      reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      notificationUrl: process.env.NOTIFICATION_URL,
+      narration: `Resale payout for ticket ${ticket.id}`,
+      metadata: { userId: ticket.userId },
+      destination: {
+        type: 'bank_account',
+        bank_account: {
+          bank: process.env.TEST_BANK_CODE || ticket.bankCode,
+          account: process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
+          account_name: seller.name || 'Unknown',
+        },
+      },
+    };
+
+    await this.initiateWithdrawal(withdrawalDto);
+
+    return {
+      platformCut: platformCutAcc + platformCut,
+      organizerRoyalty: organizerRoyaltyAcc + organizerRoyalty,
+      sellerProceeds: sellerProceedsAcc + sellerProceeds,
+    };
+  }
+
+  private async processResaleFinancials(txn: any, tickets: any[]) {
     let totalPlatformCut = 0;
     let totalOrganizerRoyalty = 0;
     let totalSellerProceeds = 0;
 
     for (const ticket of tickets) {
-      const seller = ticket.user;
-      if (!seller)
-        throw new NotFoundException(`Seller not found for ticket ${ticket.id}`);
-
-      if (!ticket.resalePrice || !ticket.accountNumber || !ticket.bankCode) {
-        throw new BadRequestException(
-          `Ticket ${ticket.id} is missing resale price or payout info`,
+      const { platformCut, organizerRoyalty, sellerProceeds } =
+        await this.processResaleTicket(
+          ticket,
+          txn,
+          totalPlatformCut,
+          totalOrganizerRoyalty,
+          totalSellerProceeds,
         );
-      }
-
-      const platformCut = Math.floor(
-        (ticket.resalePrice * event.resaleFeeBps) / 10000,
-      );
-      const organizerRoyalty = Math.floor(
-        (ticket.resalePrice * event.royaltyFeeBps) / 10000,
-      );
-      const sellerProceeds =
-        ticket.resalePrice - (platformCut + organizerRoyalty);
-
-      totalPlatformCut += platformCut;
-      totalOrganizerRoyalty += organizerRoyalty;
-      totalSellerProceeds += sellerProceeds;
-
-      const newCode = await this.generateUniqueTicketCode();
-      await this.prisma.ticket.update({
-        where: { id: ticket.id },
-        data: {
-          userId: txn.userId,
-          isListed: false,
-          code: newCode,
-          resalePrice: null,
-          resaleCount: { increment: 1 },
-          resaleCommission: platformCut + organizerRoyalty,
-          soldTo: txn.userId,
-        },
-      });
-
-      await this.initiateWithdrawal({
-        customer: { email: seller.email, name: seller.name },
-        amount: sellerProceeds,
-        currency: 'NGN',
-        destination: {
-          account_number: process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
-          bank_code: process.env.TEST_BANK_CODE || ticket.bankCode,
-        },
-        reference: `resale_payout_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        notification_url: process.env.NOTIFICATION_URL,
-        narration: `Resale payout for ticket ${ticket.id}`,
-        metadata: { userId: ticket.userId },
-      });
+      totalPlatformCut = platformCut;
+      totalOrganizerRoyalty = organizerRoyalty;
+      totalSellerProceeds = sellerProceeds;
     }
 
-    await this.updateWalletBalance(event.organizerId, totalOrganizerRoyalty);
+    await this.updateWalletBalance(
+      tickets[0].event.organizerId,
+      totalOrganizerRoyalty,
+    );
 
     const platformAdmin = await this.prisma.user.findUnique({
       where: { email: process.env.ADMIN_EMAIL },
+      select: { id: true, email: true, name: true },
     });
     if (platformAdmin) {
       await this.upsertPlatformAdminWallet(platformAdmin.id, totalPlatformCut);
     }
 
+    return { totalPlatformCut, totalOrganizerRoyalty, totalSellerProceeds };
+  }
+
+  private async processResaleFlow(txn: any, ticketIds: string[]) {
+    const { tickets } = await this.validateTicketsForResale(txn, ticketIds);
+    const { totalPlatformCut, totalOrganizerRoyalty, totalSellerProceeds } =
+      await this.processResaleFinancials(txn, tickets);
     await this.sendResaleEmails(
       txn,
       tickets,
@@ -414,73 +586,204 @@ export class PaymentService {
     return ticketIds;
   }
 
-  // Payment Initiation
-  async initiatePayment(data: InitiateDto): Promise<string> {
-    this.logger.log(
-      `Initiating payment with data: ${JSON.stringify(data, null, 2)}`,
-    );
-    const response = await this.callPaymentGateway<{ checkout_url?: string }>(
-      'post',
-      `${this.paymentBaseUrl}/api/v1/initiate`,
-      data,
-    );
-    if (!response.checkout_url)
-      throw new BadRequestException('Failed to initiate payment');
-    return response.checkout_url;
-  }
+  // ===================== Withdrawal =====================
+  async initiateWithdrawal(dto: WithdrawalDTO): Promise<WithdrawalResponse> {
+    validateDTO(dto);
 
-  async initiateWithdrawal(data: any): Promise<any> {
-    this.logger.log(
-      `Initiating withdrawal with data: ${JSON.stringify(data, null, 2)}`,
-    );
-    const response = await this.callPaymentGateway(
-      'post',
-      `${this.paymentBaseUrl}/api/v1/payout`,
-      data,
-    );
-    return response ?? null;
-  }
-
-  // Transaction Verification
-  async verifyTransaction(reference: string) {
-    this.logger.log(`Verifying transaction with reference: ${reference}`);
-
-    const { status, message } = await this.callPaymentGateway<{
-      status: boolean;
-      message: string;
-    }>(
-      'get',
-      `${this.paymentBaseUrl}/api/v1/transactions/verify?reference=${reference}`,
-    );
-    if (!status || message !== 'verification successful') {
-      throw new BadRequestException('Transaction verification failed');
+    const selectedProvider = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const providerInstance = this.providers.get(selectedProvider);
+    if (!providerInstance) {
+      this.logger.error(`Unsupported provider: ${selectedProvider}`);
+      throw new BadRequestException(
+        `Unsupported provider: ${selectedProvider}`,
+      );
     }
 
-    const { alreadyProcessed, txn } =
-      await this.findAndLockTransaction(reference);
+    this.logger.log(
+      `Routing withdrawal initiation to provider: ${selectedProvider} for userId: ${dto.metadata?.userId}`,
+    );
+    try {
+      return await providerInstance.initiateWithdrawal(dto);
+    } catch (err) {
+      this.logger.error(`Failed to initiate withdrawal: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Withdrawal failed: ${err.message}`,
+      );
+    }
+  }
+
+  // ===================== Bank Codes =====================
+  async fetchBankCodes() {
+    const selectedProvider = 'aggregator';
+    const providerInstance = this.providers.get(selectedProvider);
+    if (!providerInstance) {
+      this.logger.error(`Unsupported provider: ${selectedProvider}`);
+      throw new BadRequestException(
+        `Unsupported provider: ${selectedProvider}`,
+      );
+    }
+
+    this.logger.log(`Fetching bank codes from provider: ${selectedProvider}`);
+    try {
+      return await providerInstance.fetchBankCodes();
+    } catch (err) {
+      this.logger.error(`Failed to fetch bank codes: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to fetch bank codes: ${err.message}`,
+      );
+    }
+  }
+
+  // ===================== Transaction Verification =====================
+  // eslint-disable-next-line @typescript-eslint/require-await
+  private async verifyKoraTransaction(
+    koraPayload: any,
+  ): Promise<VerifyResponse> {
+    if (!koraPayload?.data) {
+      throw new BadRequestException('Missing Kora payload for verification');
+    }
+
+    return {
+      status: true,
+      message: 'Kora webhook received',
+      data: {
+        reference: koraPayload.data.reference,
+        status: koraPayload.data.status,
+        amount: koraPayload.data.amount,
+        currency: koraPayload.data.currency,
+        paymentMethod: koraPayload.data.payment_method,
+        fee: koraPayload.data.fee,
+      },
+    };
+  }
+
+  private async verifyAggregatorTransaction(
+    reference: string,
+    verifyProvider: IPayinProvider,
+  ): Promise<VerifyResponse> {
+    try {
+      const response = await verifyProvider.verifyTransaction(reference);
+      this.logger.log(
+        `✅ Gateway response: status=${response.status}, message=${response.message}`,
+      );
+      return response;
+    } catch (err) {
+      this.logger.error(`Verification failed for ${reference}: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Failed to verify transaction: ${err.message}`,
+      );
+    }
+  }
+
+  private mapProviderStatusToTransactionStatus(
+    providerStatus: string,
+  ): TransactionStatus {
+    switch (providerStatus?.toLowerCase()) {
+      case 'success':
+        return TransactionStatus.SUCCESS;
+      case 'failed':
+        return TransactionStatus.FAILED;
+      case 'pending':
+      default:
+        return TransactionStatus.PENDING;
+    }
+  }
+
+  async verifyTransaction(
+    reference: string,
+    provider?: string,
+    koraPayload?: any,
+  ) {
+    if (!reference) {
+      this.logger.error('Verification failed: Reference is undefined');
+      throw new BadRequestException('Transaction reference is required');
+    }
+
+    this.logger.log(`🔍 Starting verification for reference: ${reference}`);
+
+    const providerKey = process.env.GATEWAY?.toLowerCase() || 'aggregator';
+    const verifyProvider = this.providers.get(providerKey);
+
+    if (!verifyProvider && providerKey !== 'kora') {
+      this.logger.error(`Unknown payment provider: ${providerKey}`);
+      throw new BadRequestException(`Unknown payment provider: ${providerKey}`);
+    }
+
+    let response: VerifyResponse;
+    if (providerKey === 'kora') {
+      this.logger.log(
+        `⚡ Skipping API verification for Kora, using webhook payload directly`,
+      );
+      response = await this.verifyKoraTransaction(koraPayload);
+    } else {
+      response = await this.verifyAggregatorTransaction(
+        reference,
+        verifyProvider!,
+      );
+    }
+
+    const txnStatus = this.mapProviderStatusToTransactionStatus(
+      response.data?.status,
+    );
+
+    this.logger.log(
+      `📌 Provider status for ${reference}: ${response.data?.status} → ${txnStatus}`,
+    );
+
+    const { alreadyProcessed, txn } = await this.findAndLockTransaction(
+      reference,
+      txnStatus,
+    );
+
+    this.logger.log(
+      `🔐 Transaction status: alreadyProcessed=${alreadyProcessed}`,
+    );
+
     if (alreadyProcessed) {
       return { message: 'Already verified', success: true };
+    }
+
+    if (txnStatus !== TransactionStatus.SUCCESS) {
+      this.logger.warn(
+        `Skipping ticket processing for ${reference}, status is ${txnStatus}`,
+      );
+      return {
+        message: `Transaction updated with status ${txnStatus}`,
+        success: false,
+      };
     }
 
     const ticketIds = txn.tickets
       .filter((tt) => tt.ticket?.id)
       .map((tt) => tt.ticket.id);
 
-    if (txn.type === 'PURCHASE') {
-      await this.processPurchaseFlow(txn, ticketIds);
-    } else if (txn.type === 'RESALE') {
-      await this.processResaleFlow(txn, ticketIds);
-    } else {
-      throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
-    }
+    this.logger.log(`🎟️ Tickets linked: ${ticketIds.join(', ')}`);
 
-    return {
-      message: 'Transaction verified and processed successfully',
-      ticketIds,
-    };
+    try {
+      if (txn.type === TransactionType.PURCHASE) {
+        this.logger.log(`🛒 Processing purchase for ${reference}`);
+        await this.processPurchaseFlow(txn, ticketIds);
+      } else if (txn.type === TransactionType.RESALE) {
+        this.logger.log(`♻️ Processing resale for ${reference}`);
+        await this.processResaleFlow(txn, ticketIds);
+      } else {
+        this.logger.error(`Invalid transaction type: ${txn.type}`);
+        throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
+      }
+
+      this.logger.log(`🎉 Transaction ${reference} processed successfully`);
+      return {
+        message: 'Transaction verified and processed successfully',
+        ticketIds,
+        success: true,
+      };
+    } catch (err) {
+      this.logger.error(`Failed to process ${reference}: ${err.message}`);
+      throw err;
+    }
   }
 
-  // Ticket Code Generation
+  // ===================== Ticket Code Generation =====================
   private generateTicketCode(): string {
     const randomPart = randomBytes(5).toString('hex').toUpperCase();
     return `TCK-${randomPart}`;

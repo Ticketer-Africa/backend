@@ -5,36 +5,115 @@ export function generateOtpTemplate(name: string, otp: string): string {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
       <title>Your OTP - Ticketer</title>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, sans-serif;">
-      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; margin: 20px auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
+      <!-- Preheader text -->
+      <div style="display: none; max-height: 0; overflow: hidden; font-size: 1px; line-height: 1px; color: transparent;">
+        Your Ticketer OTP is ${otp}. Use it to verify your account.
+      </div>
+
+      <!-- Main container -->
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: transparent;">
         <tr>
-          <td style="padding: 20px; text-align: center;">
-            <h1 style="font-size: 24px; color: #333333; margin: 0;">Ticketer</h1>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 0 20px 20px;">
-            <h2 style="font-size: 20px; color: #333333; margin-top: 20px;">Hey ${name},</h2>
-            <p style="font-size: 16px; color: #666666; margin-top: 10px;">Your One-Time Password (OTP) is:</p>
-            <h3 style="font-size: 24px; color: #1a73e8; margin: 10px 0; letter-spacing: 2px;">${otp}</h3>
-            <p style="font-size: 16px; color: #666666; margin-top: 10px;">This code will expire in 10 minutes.</p>
-            <p style="font-size: 16px; color: #666666; margin-top: 10px;">If you didn’t request this, please ignore this email or contact our <a href="mailto:support@ticketer.com" style="color: #1a73e8; text-decoration: underline;">support team</a>.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 20px; text-align: center;">
-            <p style="font-size: 14px; color: #999999; margin: 0;">– The Ticketer Team</p>
-          </td>
-        </tr>
-      </table>
-      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; padding: 10px 0; text-align: center; background-color: #e8ecef; font-size: 12px; color: #666666;">
-        <tr>
-          <td>
-            <p style="margin: 5px 0;">Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1a73e8; text-decoration: underline;">Ticketer</a>.</p>
-            <p style="margin: 5px 0;">Manage your funds effortlessly with our wallet system.</p>
-            <p style="margin: 5px 0;">Questions? Reach us at <a href="mailto:support@ticketer.com" style="color: #1a73e8; text-decoration: underline;">support@ticketer.com</a>.</p>
+          <td style="padding: 40px 20px;">
+<!-- Header -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFFFF; border-radius: 12px 12px 0 0; border-bottom: 1px solid #e0e0e0;">
+  <tr>
+    <td style="padding: 40px 48px; text-align: center;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
+        <img 
+          src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
+          alt="Ticketer Logo" 
+          width="32" 
+          height="32" 
+          style="display: block; max-width: 32px; height: auto;"
+        />
+        <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
+          Ticketer
+        </h1>
+      </div>
+    </td>
+  </tr>
+</table>
+
+            <!-- Main content -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border-radius: 0 0 8px 8px;">
+              <tr>
+                <td style="padding: 40px;">
+                  
+                  <!-- OTP message -->
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h2 style="font-size: 24px; color: #333333; margin: 0 0 16px 0; font-weight: 600;">
+                      Your OTP, ${name}!
+                    </h2>
+                    <p style="font-size: 16px; color: #666666; margin: 0; font-weight: 400;">
+                      Use this code to verify your <strong>Ticketer</strong> account.
+                    </p>
+                  </div>
+
+                  <!-- OTP code -->
+                  <div style="background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 24px; margin-bottom: 32px; text-align: center;">
+                    <h3 style="font-size: 32px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: 4px; background: #e5e7eb; padding: 12px 24px; border-radius: 8px; display: inline-block;">
+                      ${otp}
+                    </h3>
+                    <p style="font-size: 14px; color: #666666; margin: 12px 0 0 0; line-height: 1.5;">
+                      This code will expire in <strong>10 minutes</strong>.
+                    </p>
+                  </div>
+
+                  <!-- Action buttons -->
+                  <div style="text-align: center; margin: 32px 0;">
+                    <a href="https://ticketer.com/verify-otp" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      Verify Account
+                    </a>
+                    <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      Contact Support
+                    </a>
+                  </div>
+
+                  <!-- Important info -->
+                  <div style="border-left: 3px solid #1E88E5; padding: 16px 20px; margin: 32px 0; background-color: #f9f9f9;">
+                    <h4 style="color: #333333; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">
+                      What to do next:
+                    </h4>
+                    <ul style="color: #666666; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
+                      <li>Enter your OTP on the verification page to activate your account</li>
+                      <li>Do not share this code with anyone</li>
+                      <li>Contact support if you didn’t request this OTP</li>
+                    </ul>
+                  </div>
+
+                </td>
+              </tr>
+            </table>
+
+            <!-- Footer -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 32px;">
+              <tr>
+                <td style="text-align: center; padding: 24px 20px;">
+                  <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
+                    – The Ticketer Team
+                  </p>
+                  
+                  <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                    <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                    </p>
+                    <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
+                      Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
+                    </p>
+                  </div>
+                  
+                  <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
+                    © 2025 Ticketer. All rights reserved.<br>
+                    This email was sent because you requested an OTP for account verification.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
           </td>
         </tr>
       </table>

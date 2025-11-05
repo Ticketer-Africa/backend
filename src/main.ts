@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
@@ -6,13 +7,46 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS
+  // Enable CORS with dynamic origin
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://ticketer-app-staging.vercel.app',
+    'https://github.com/Ticketer-Africa/backend.git',
+    'frontend-git-staging-mayokun-s-projects.vercel.app',
+  ];
   app.enableCors({
-    origin: [
-      'http://localhost:3000', // Local development
-      'https://ticketer.vercel.app', // Your deployed frontend
-    ],
-    credentials: true, // Allow sending cookies/headers with requests
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin || '*'); // Return the request's origin or '*' if no origin
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,X-Requested-With,x-client-page',
+    credentials: true,
+  });
+
+  // Explicitly handle OPTIONS requests (optional, for robustness)
+  app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+      const origin = req.headers.origin;
+      if (!origin || allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader(
+          'Access-Control-Allow-Methods',
+          'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+        );
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type,Authorization,X-Requested-With,x-client-page',
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.status(204).send();
+        return;
+      }
+    }
+    next();
   });
 
   app.useGlobalPipes(
@@ -46,8 +80,8 @@ async function bootstrap() {
     ],
   });
 
-  await app.listen(process.env.PORT ?? 5000);
+  const port = process.env.PORT ?? 5000;
+  await app.listen(port);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-bootstrap();
+bootstrap().catch((err) => console.error('Bootstrap error:', err));

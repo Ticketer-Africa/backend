@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import {
   BadRequestException,
   ForbiddenException,
@@ -6,8 +7,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PaymentService } from 'src/payment/payment.service';
-import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { WithdrawalDTO } from 'src/payment/dto/initiate.dto';
 
 @Injectable()
 export class WalletService {
@@ -44,13 +46,157 @@ export class WalletService {
     return bcrypt.hash(pin, salt);
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async comparePin(plain: string, hashed: string) {
-    const valid = await bcrypt.compare(plain, hashed);
-    return valid;
+    return bcrypt.compare(plain, hashed);
   }
 
   private generateWithdrawalReference() {
     return `withdraw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  }
+
+  // ----------------------
+  // Withdrawal Helpers
+  // ----------------------
+
+  private async validateWithdrawal(
+    userId: string,
+    payload: {
+      email: string;
+      name: string;
+      pin: string;
+      amount: number;
+      account_number: string;
+      bank_code: string;
+      narration?: string;
+    },
+    tx: any, // transaction client
+  ) {
+    const user = await tx.user.findUnique({ where: { id: userId } });
+    if (user?.role === 'USER') {
+      throw new BadRequestException(
+        'Users cannot withdraw funds...buy a ticket instead',
+      );
+    }
+
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet?.pin) {
+      throw new BadRequestException(
+        'PIN not set. Please set your wallet PIN before withdrawing.',
+      );
+    }
+
+    const isPinValid = await this.comparePin(payload.pin, wallet.pin);
+    if (!isPinValid) throw new BadRequestException('Invalid PIN provided.');
+
+    if (wallet.balance.lt(payload.amount)) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
+
+    return wallet;
+  }
+
+  private async processWithdrawal(
+    userId: string,
+    payload: {
+      email: string;
+      name: string;
+      pin: string;
+      amount: number;
+      account_number: string;
+      bank_code: string;
+      narration?: string;
+    },
+    tx: any,
+  ) {
+    const reference = this.generateWithdrawalReference();
+    const withdrawalDto: WithdrawalDTO = {
+      customer: { email: payload.email, name: payload.name },
+      amount: payload.amount,
+      currency: 'NGN',
+      reference,
+      notificationUrl: process.env.NOTIFICATION_URL,
+      narration: payload.narration || 'Wallet withdrawal',
+      metadata: { userId },
+      destination: {
+        type: 'bank_account',
+        bank_account: {
+          bank: payload.bank_code,
+          account: payload.account_number,
+          account_name: payload.name || 'Unknown',
+        },
+      },
+    };
+
+    const payoutResult =
+      await this.paymentService.initiateWithdrawal(withdrawalDto);
+
+    await tx.wallet.update({
+      where: { userId },
+      data: { balance: { decrement: payload.amount } },
+    });
+
+    return { reference, payoutResult };
+  }
+
+  // ----------------------
+  // Transaction Helpers
+  // ----------------------
+
+  private async fetchTransactions(organizerId: string, eventIds: string[]) {
+    return this.prisma.transaction.findMany({
+      where: {
+        OR: [
+          {
+            eventId: { in: eventIds },
+            type: { in: ['PURCHASE', 'RESALE'] },
+            status: 'SUCCESS',
+          },
+          {
+            userId: organizerId,
+            type: 'WITHDRAW',
+            status: { in: ['SUCCESS', 'FAILED'] },
+          },
+        ],
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        event: { select: { id: true, name: true, resaleFeeBps: true } },
+        tickets: {
+          select: {
+            ticket: {
+              select: {
+                id: true,
+                code: true,
+                event: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private formatTransaction(tx: any) {
+    return {
+      id: tx.id,
+      reference: tx.reference,
+      type: tx.type,
+      amount:
+        tx.type === 'RESALE' && tx.event
+          ? Math.round((tx.amount * (tx.event.resaleFeeBps ?? 500)) / 10000)
+          : tx.amount,
+      status: tx.status,
+      createdAt: tx.createdAt,
+      buyer: tx.type !== 'WITHDRAW' ? tx.user : null,
+      event: tx.event,
+      tickets: tx.tickets.map((t: any) => ({
+        id: t.ticket.id,
+        code: t.ticket.code,
+        event: t.ticket.event,
+      })),
+    };
   }
 
   // ----------------------
@@ -66,6 +212,7 @@ export class WalletService {
     return { balance: wallet.balance };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async withdraw(
     userId: string,
     payload: {
@@ -78,49 +225,14 @@ export class WalletService {
       narration?: string;
     },
   ) {
-    await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (user?.role === 'USER') {
-        throw new BadRequestException(
-          'Users cannot withdraw funds...buy a ticket instead',
-        );
-      }
+    return this.prisma.$transaction(async (tx) => {
+      await this.validateWithdrawal(userId, payload, tx);
 
-      const wallet = await this.validateWallet(userId);
-
-      if (!wallet.pin) {
-        throw new BadRequestException(
-          'PIN not set. Please set your wallet PIN before withdrawing.',
-        );
-      }
-
-      const isPinValid = await this.comparePin(payload.pin, wallet.pin);
-      if (!isPinValid) throw new BadRequestException('Invalid PIN provided.');
-
-      if (wallet.balance.lt(payload.amount)) {
-        throw new BadRequestException('Insufficient wallet balance');
-      }
-
-      const reference = this.generateWithdrawalReference();
-
-      const payoutResult = await this.paymentService.initiateWithdrawal({
-        customer: { email: payload.email, name: payload.name },
-        amount: payload.amount,
-        currency: 'NGN',
-        destination: {
-          account_number: payload.account_number,
-          bank_code: payload.bank_code,
-        },
-        reference,
-        notification_url: `${process.env.NOTIFICATION_URL}`,
-        narration: payload.narration || 'Wallet withdrawal',
-        metadata: { userId },
-      });
-
-      await tx.wallet.update({
-        where: { userId },
-        data: { balance: { decrement: payload.amount } },
-      });
+      const { reference, payoutResult } = await this.processWithdrawal(
+        userId,
+        payload,
+        tx,
+      );
 
       return {
         message: 'Withdrawal initiated successfully',
@@ -130,6 +242,7 @@ export class WalletService {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async setWalletPin(
     userId: string,
     payload: { oldPin?: string; newPin: string },
@@ -174,66 +287,9 @@ export class WalletService {
 
   async getTransactions(organizerId: string) {
     const user = await this.validateOrganizer(organizerId);
-
     const eventIds = user.events.map((event) => event.id);
-
-    const transactions = await this.prisma.transaction.findMany({
-      where: {
-        OR: [
-          {
-            eventId: { in: eventIds },
-            type: { in: ['PURCHASE', 'RESALE'] },
-            status: 'SUCCESS',
-          },
-          {
-            userId: organizerId,
-            type: 'WITHDRAW',
-            status: { in: ['SUCCESS', 'FAILED'] },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        reference: true,
-        amount: true,
-        type: true,
-        status: true,
-        createdAt: true,
-        user: { select: { id: true, name: true, email: true } },
-        event: { select: { id: true, name: true, resaleFeeBps: true } },
-        tickets: {
-          select: {
-            ticket: {
-              select: {
-                id: true,
-                code: true,
-                event: { select: { id: true, name: true } },
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return transactions.map((tx) => ({
-      id: tx.id,
-      reference: tx.reference,
-      type: tx.type,
-      amount:
-        tx.type === 'RESALE'
-          ? Math.round((tx.amount * (tx.event?.resaleFeeBps ?? 500)) / 10000)
-          : tx.amount,
-      status: tx.status,
-      createdAt: tx.createdAt,
-      buyer: tx.type !== 'WITHDRAW' ? tx.user : null,
-      event: tx.event ?? null,
-      tickets: tx.tickets.map((t) => ({
-        id: t.ticket.id,
-        code: t.ticket.code,
-        event: t.ticket.event,
-      })),
-    }));
+    const transactions = await this.fetchTransactions(organizerId, eventIds);
+    return transactions.map((tx) => this.formatTransaction(tx));
   }
 
   async hasWalletPin(userId: string): Promise<{ hasPin: boolean }> {

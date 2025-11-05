@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_DIRECT_URL")
 }
 
 model User {
@@ -28,6 +29,8 @@ model User {
   events        Event[]    
   tickets       Ticket[]    
   transactions  Transaction[] 
+
+  EventPayout EventPayout[]
 }
 
 model Wallet {
@@ -56,12 +59,29 @@ model Event {
 
   primaryFeeBps     Int    @default(350)   // 5% on first sale
   resaleFeeBps      Int    @default(350)   // 5% platform fee on resale
-  royaltyFeeBps     Int    @default(1000)   // 5% organizer royalty on resale
+  royaltyFeeBps     Int    @default(1000)   // 10% organizer royalty on resale
 
   tickets     Ticket[]
-  ticketCategories TicketCategory[] // New relation for ticket categories
-  transactions Transaction[] // all purchase/resale txns for this event
+  ticketCategories TicketCategory[] 
+  transactions Transaction[]
+
+  EventPayout EventPayout?
 }
+
+model EventPayout {
+  id         String   @id @default(cuid())
+  event      Event    @relation(fields: [eventId], references: [id])
+  eventId    String   @unique
+
+  organizer  User     @relation(fields: [organizerId], references: [id])
+  organizerId String
+
+  balance    Decimal  @default("0.00") 
+  released   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 
 model TicketCategory {
   id          String    @id @default(cuid())
@@ -74,7 +94,7 @@ model TicketCategory {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tickets     Ticket[]  // Tickets associated with this category
+  tickets     Ticket[]  
 }
 
 model Ticket {

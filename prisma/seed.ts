@@ -1,192 +1,185 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
+/* eslint-disable prettier/prettier */
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
+const ADMIN_EMAIL = 'admin@example.com';
+
+const randInt = (min: number, max: number) =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
+
+const pick = <T,>(arr: T[]) => arr[randInt(0, arr.length - 1)];
+
+const categories = ['MUSIC', 'CONCERT', 'CONFERENCE', 'WORKSHOP', 'SPORTS'];
+
+const sampleNames = [
+  'Aisha', 'Chinedu', 'Bola', 'Olu', 'Ngozi', 'Tunde', 'Ife', 'Kemi',
+  'Sani', 'David', 'Fatima', 'Grace', 'Ibrahim', 'Sarah', 'Michael',
+  'Ada', 'John', 'Mary', 'Peter', 'Ruth',
+];
+
+const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
+
+const mkEventName = (cat: string, idx: number) =>
+  `${cat[0] + cat.slice(1).toLowerCase()} Expo ${idx + 1}`;
+
+const toDecimalString = (n: number) => n.toFixed(2);
 
 async function main() {
-  console.log('🌱 Starting full seed...');
+  console.log('🌱 Starting enhanced seed with transactions...');
 
   const hashedPassword = await bcrypt.hash('password123', 10);
 
-  const [admin, organizer, user1, user2] = await Promise.all([
-    prisma.user.upsert({
-      where: { email: 'admin@example.com' },
-      update: {},
-      create: {
-        email: 'admin@example.com',
-        name: 'Admin',
-        password: hashedPassword,
-        role: 'ADMIN',
-        isVerified: true,
-        wallet: { create: { balance: 100_000 } },
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: 'organizer@example.com' },
-      update: {},
-      create: {
-        email: 'organizer@example.com',
-        name: 'Organizer',
+  // 1) Create admin
+  const admin = await prisma.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    update: {},
+    create: {
+      email: ADMIN_EMAIL,
+      name: 'Platform Admin',
+      password: hashedPassword,
+      role: 'ADMIN',
+      isVerified: true,
+      wallet: { create: { balance: toDecimalString(500000) } },
+    },
+    include: { wallet: true },
+  });
+
+  // 2) Create 5 organizers
+  const organizers: any[] = [];
+  for (let i = 0; i < 5; i++) {
+    const organizer = await prisma.user.create({
+      data: {
+        email: `organizer${i + 1}@example.com`,
+        name: `${pick(sampleNames)} Organizer ${i + 1}`,
         password: hashedPassword,
         role: 'ORGANIZER',
         isVerified: true,
-        wallet: { create: { balance: 50_000 } },
+        wallet: { create: { balance: toDecimalString(randInt(5000, 50000)) } },
       },
-    }),
-    prisma.user.upsert({
-      where: { email: 'user1@example.com' },
-      update: {},
-      create: {
-        email: 'user1@example.com',
-        name: 'User One',
-        password: hashedPassword,
-        role: 'USER',
-        isVerified: true,
-        wallet: { create: { balance: 30_000 } },
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: 'user2@example.com' },
-      update: {},
-      create: {
-        email: 'user2@example.com',
-        name: 'User Two',
-        password: hashedPassword,
-        role: 'USER',
-        isVerified: true,
-        wallet: { create: { balance: 25_000 } },
-      },
-    }),
-  ]);
-
-  console.log('✅ Created base users');
-
-  const events = await Promise.all(
-    Array.from({ length: 3 }).map((_, i) =>
-      prisma.event.create({
-        data: {
-          name: `Music Festival ${i + 1}`,
-          category: 'MUSIC',
-          slug: `music-festival-${i + 1}`,
-          description:
-            'Join us for the biggest music festival of the summer featuring top artists from around the world. Experience three days of non-stop music, food, and fun in the heart of Central Park.',
-          location: 'Central Park, New York, NY',
-          date: new Date(`2025-08-${10 + i}T20:00:00Z`),
-          organizerId: organizer.id,
-          primaryFeeBps: 1000, // 10% platform fee
-          resaleFeeBps: 500, // 5% resale fee
-          royaltyFeeBps: 200, // 2% royalty fee
-          ticketCategories: {
-            create: [
-              {
-                name: 'VVIP',
-                price: 5000 + i * 1000,
-                maxTickets: 10,
-                minted: 0,
-              },
-              {
-                name: 'VIP',
-                price: 3000 + i * 1000,
-                maxTickets: 20,
-                minted: 0,
-              },
-              {
-                name: 'Regular',
-                price: 1000 + i * 1000,
-                maxTickets: 20,
-                minted: 0,
-              },
-            ],
-          },
-        },
-      }),
-    ),
-  );
-
-  console.log('🎉 Created multiple events with ticket categories');
-
-  for (const event of events) {
-    const ticketCategories = await prisma.ticketCategory.findMany({
-      where: { eventId: event.id },
+      include: { wallet: true },
     });
+    organizers.push(organizer);
+  }
 
-    for (const category of ticketCategories) {
-      const ticketsPerCategory = Math.min(category.maxTickets, 10); // Limit to 10 tickets per category for seeding
-      for (let j = 0; j < ticketsPerCategory; j++) {
-        const buyer = j % 2 === 0 ? user1 : user2;
+  // 3) Create 14 regular users
+  const users: any[] = [];
+  for (let i = 0; i < 14; i++) {
+    const user = await prisma.user.create({
+      data: {
+        email: `user${i + 1}@example.com`,
+        name: `${pick(sampleNames)} User ${i + 1}`,
+        password: hashedPassword,
+        role: 'USER',
+        isVerified: true,
+        wallet: { create: { balance: toDecimalString(randInt(0, 20000)) } },
+      },
+      include: { wallet: true },
+    });
+    users.push(user);
+  }
 
-        // Get fresh category data to check minted count
-        const updatedCategory = await prisma.ticketCategory.findUnique({
-          where: { id: category.id },
-        });
+  const buyers = [admin, ...organizers, ...users];
 
-        if (
-          !updatedCategory ||
-          updatedCategory.minted >= updatedCategory.maxTickets
-        ) {
-          console.warn(
-            `❌ Max tickets minted for category ${category.name} in event: ${event.name}`,
-          );
-          continue;
-        }
-
-        // Mint ticket
-        const ticket = await prisma.ticket.create({
-          data: {
-            code: `EVT${event.id.slice(0, 8)}_TKT${j + 1}_${category.name}`,
-            userId: buyer.id,
-            eventId: event.id,
-            ticketCategoryId: category.id,
-          },
-        });
-
-        // Update minted count for the category
-        await prisma.ticketCategory.update({
-          where: { id: category.id },
-          data: { minted: { increment: 1 } },
-        });
-
-        // Create primary purchase transaction
-        await prisma.transaction.create({
-          data: {
-            reference: `txn_evt${event.id.slice(0, 8)}_cat${category.id.slice(0, 8)}_${j + 1}`,
-            userId: buyer.id,
-            eventId: event.id,
-            type: 'PURCHASE',
-            amount: category.price,
-            status: 'SUCCESS',
-            tickets: {
-              create: [{ ticketId: ticket.id }],
-            },
-          },
-        });
-
-        // Only list ticket (no resale transaction or owner change)
-        if (j % 5 === 0) {
-          await prisma.ticket.update({
-            where: { id: ticket.id },
-            data: {
-              isListed: true,
-              resalePrice: category.price + 500,
-              listedAt: new Date(),
-              resaleCommission: Math.floor((category.price + 500) * 0.05),
-            },
-          });
-        }
-      }
-
-      console.log(
-        `🎟️ Minted and listed tickets for Category: ${category.name} in Event: ${event.name}`,
-      );
+  // 4) Create 1-2 events per organizer
+  const allEvents: any[] = [];
+  for (const organizer of organizers) {
+    const eventsForThisOrganizer = randInt(1, 2);
+    for (let e = 0; e < eventsForThisOrganizer; e++) {
+      const cat = pick(categories);
+      const slug = `${cat.toLowerCase()}-${organizer.name.replace(/\s+/g, '-').toLowerCase()}-${allEvents.length}`;
+      const event = await prisma.event.create({
+        data: {
+          name: mkEventName(cat, allEvents.length),
+          category: cat as any,
+          slug: slug.slice(0, 50),
+          description: `${lorem} ${cat} focused event.`,
+          location: pick(['Lagos', 'Abuja', 'Accra']),
+          date: new Date(Date.now() + randInt(1, 15) * 24 * 60 * 60 * 1000),
+          organizerId: organizer.id,
+          primaryFeeBps: pick([350, 500]),
+          resaleFeeBps: pick([350, 500]),
+          royaltyFeeBps: pick([500, 1000]),
+        },
+      });
+      allEvents.push({ ...event, organizer });
     }
   }
 
-  console.log('🌱 Full seed complete!');
+  // 5) Create 1-2 ticket categories per event
+  const allTicketCategories: any[] = [];
+  for (const event of allEvents) {
+    const catCount = randInt(1, 2);
+    for (let c = 0; c < catCount; c++) {
+      const name = pick(['VIP', 'Regular', 'Standard']);
+      const price = pick([1500, 3000, 5000]);
+      const category = await prisma.ticketCategory.create({
+        data: {
+          name,
+          price,
+          maxTickets: pick([50, 100]),
+          eventId: event.id,
+          minted: 0,
+        },
+      });
+      allTicketCategories.push({ ...category, event });
+    }
+  }
+
+  // 6) Simulate transactions (buyers purchase tickets)
+  for (const category of allTicketCategories) {
+    const ticketsToBuy = randInt(5, Math.min(15, category.maxTickets));
+    for (let i = 0; i < ticketsToBuy; i++) {
+      const buyer = pick(buyers);
+      const amount = category.price;
+
+      // Decrement buyer wallet
+      await prisma.wallet.update({
+        where: { userId: buyer.id },
+        data: { balance: { decrement: amount } },
+      });
+
+      // Calculate organizer cut
+      const organizerCut = Math.floor(amount * (category.event.primaryFeeBps / 10000));
+      await prisma.wallet.update({
+        where: { userId: category.event.organizerId },
+        data: { balance: { increment: organizerCut } },
+      });
+
+      // Platform cut goes to admin
+      const platformCut = amount - organizerCut;
+      await prisma.wallet.update({
+        where: { userId: admin.id },
+        data: { balance: { increment: platformCut } },
+      });
+
+      // Increment minted tickets
+      await prisma.ticketCategory.update({
+        where: { id: category.id },
+        data: { minted: { increment: 1 } },
+      });
+
+      // Create transaction record
+      await prisma.transaction.create({
+        data: {
+          reference: `TX-${Date.now()}-${randInt(1000, 9999)}`,
+          userId: buyer.id,
+          eventId: category.event.id,
+          type: 'PURCHASE',
+          amount,
+          status: 'SUCCESS',
+        },
+      });
+    }
+  }
+
+  console.log('✅ Enhanced seed complete: users, events, tickets, and transactions created.');
 }
 
 main()
-  .catch((err) => {
-    console.error('❌ Seed failed:', err);
+  .catch((e) => {
+    console.error('❌ Seed failed:', e);
     process.exit(1);
   })
   .finally(async () => {

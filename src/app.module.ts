@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -14,8 +15,11 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { PaymentService } from './payment/payment.service';
 import { PaymentModule } from './payment/payment.module';
 import { HttpModule } from '@nestjs/axios';
+import { AdminModule } from './admin/admin.module';
 import { WalletModule } from './wallet/wallet.module';
 import { MailService } from './mail/mail.service';
+import { KoraPayinProvider } from './payment/providers/kora.provider';
+import { AggregatorPayinProvider } from './payment/providers/aggregator.provider';
 
 @Module({
   imports: [
@@ -23,6 +27,7 @@ import { MailService } from './mail/mail.service';
     PrismaModule,
     AuthModule,
     MailModule,
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
       throttlers: [
         {
@@ -37,6 +42,7 @@ import { MailService } from './mail/mail.service';
     PaymentModule,
     HttpModule,
     WalletModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
@@ -45,6 +51,8 @@ import { MailService } from './mail/mail.service';
     TicketService,
     PaymentService,
     MailService,
+    KoraPayinProvider,
+    AggregatorPayinProvider,
   ],
 })
-export class AppModule {}
+export class AppModule { }

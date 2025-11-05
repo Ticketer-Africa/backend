@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import { catchError, firstValueFrom, retry, throwError } from 'rxjs';
 import {
   generateOtpTemplate,
   registrationTemplate,
@@ -7,7 +7,10 @@ import {
   changePasswordTemplate,
   eventCreationTemplate,
 } from './templates';
-import { generateTicketQR, QRTicketData } from '../common/utils/qrCode.utils';
+import {
+  generateTicketQRBuffer,
+  QRTicketData,
+} from '../common/utils/qrCode.utils';
 import {
   TicketDetails,
   ticketPurchaseAdminTemplate,
@@ -19,35 +22,37 @@ import {
   ticketResaleSellerTemplate,
   ticketResaleTemplate,
 } from './templates/ticket-purchase.template';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { HttpService } from '@nestjs/axios';
 
 @Injectable()
 export class MailService {
-  private transporter;
   private logger = new Logger(MailService.name);
 
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
-  }
+  constructor(
+    private readonly cloudinary: CloudinaryService,
+    private httpService: HttpService,
+  ) {}
 
+  // inside your MailService
   private async sendMail(to: string, subject: string, html: string) {
-    const mailOptions = {
-      from: `"Ticketer" <${process.env.MAIL_USER}>`,
-      to,
-      subject,
-      html,
-    };
-
     try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Mail sent to ${to} | Subject: ${subject}`);
+      await firstValueFrom(
+        this.httpService
+          .post(`${process.env.MAIL_SERVICE_URL}/send`, {
+            to,
+            subject,
+            html,
+          })
+          .pipe(
+            retry(2),
+            catchError((err) => throwError(() => new Error(err.message))),
+          ),
+      );
+
+      this.logger.log(`Mail queued to ${to} | Subject: ${subject}`);
     } catch (error) {
-      this.logger.error(`Failed to send mail to ${to}`, error.stack);
+      this.logger.error(`Failed to queue mail to ${to}`, error.message);
       throw error;
     }
   }
@@ -96,12 +101,19 @@ export class MailService {
     }[],
   ) {
     const ticketDetails: TicketDetails[] = await Promise.all(
-      tickets.map(async ({ ticketId, code, qrData, categoryName }) => ({
-        ticketId,
-        code,
-        categoryName,
-        qrCodeDataUrl: await generateTicketQR(qrData),
-      })),
+      tickets.map(async ({ ticketId, code, qrData, categoryName }) => {
+        const qrBuffer = await generateTicketQRBuffer(qrData);
+        const qrUrl = await this.cloudinary.uploadBuffer(
+          qrBuffer,
+          'ticketer/qrcodes',
+        );
+        return {
+          ticketId,
+          code,
+          categoryName,
+          qrCodeDataUrl: qrUrl, // <-- now a real hosted image URL
+        };
+      }),
     );
 
     await this.sendMail(
@@ -167,12 +179,19 @@ export class MailService {
     }[],
   ) {
     const ticketDetails: TicketDetails[] = await Promise.all(
-      tickets.map(async ({ ticketId, code, qrData, categoryName }) => ({
-        ticketId,
-        code,
-        categoryName,
-        qrCodeDataUrl: await generateTicketQR(qrData),
-      })),
+      tickets.map(async ({ ticketId, code, qrData, categoryName }) => {
+        const qrBuffer = await generateTicketQRBuffer(qrData);
+        const qrUrl = await this.cloudinary.uploadBuffer(
+          qrBuffer,
+          'ticketer/qrcodes',
+        );
+        return {
+          ticketId,
+          code,
+          categoryName,
+          qrCodeDataUrl: qrUrl,
+        };
+      }),
     );
 
     await this.sendMail(
