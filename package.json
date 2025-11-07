@@ -9,7 +9,7 @@
     "postinstall": "prisma generate --no-engine",
     "build": "nest build",
     "migrate:deploy": "npx prisma migrate deploy",
-    "start:railway": "npx prisma generate && npm run migrate:deploy && node dist/main.js",
+    "start:railway": "npm run build && npx prisma generate && npx prisma migrate deploy && node dist/main.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
