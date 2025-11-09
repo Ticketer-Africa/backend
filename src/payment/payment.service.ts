@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 import {
   BadRequestException,
   Injectable,
@@ -24,6 +23,7 @@ import { IPayinProvider } from './interface/payin-provider.interface';
 import { KoraPayinProvider } from './providers/kora.provider';
 import { AggregatorPayinProvider } from './providers/aggregator.provider';
 import { TransactionStatus } from '@prisma/client';
+import { RedisService } from 'src/redis/redis.service';
 
 enum TransactionType {
   PURCHASE = 'PURCHASE',
@@ -39,6 +39,7 @@ export class PaymentService {
     private httpService: HttpService,
     private prisma: PrismaService,
     private mailService: MailService,
+    private redisService: RedisService,
     private koraProvider: KoraPayinProvider,
     private aggregatorProvider: AggregatorPayinProvider,
   ) {
@@ -76,7 +77,6 @@ export class PaymentService {
   }
 
   // ===================== Transaction Management =====================
-  // eslint-disable-next-line @typescript-eslint/require-await
   private async findAndLockTransaction(
     reference: string,
     status: TransactionStatus,
@@ -84,6 +84,16 @@ export class PaymentService {
     if (!reference) {
       this.logger.error('Transaction reference is undefined');
       throw new BadRequestException('Transaction reference is required');
+    }
+
+    const cacheKey = `transaction:${reference}`;
+    // Check Redis cache first
+    const cachedTxn = await this.redisService.get(cacheKey);
+    if (cachedTxn) {
+      this.logger.log(`Cache hit for transaction: ${reference}`);
+      if (cachedTxn.status === status) {
+        return { alreadyProcessed: true, txn: cachedTxn };
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -116,6 +126,8 @@ export class PaymentService {
       if (!txn) throw new NotFoundException('Transaction not found');
 
       if (txn.status === status) {
+        // Cache the transaction with a TTL of 5 minutes
+        await this.redisService.set(cacheKey, txn, 300);
         return { alreadyProcessed: true, txn };
       }
 
@@ -124,7 +136,11 @@ export class PaymentService {
         data: { status },
       });
 
-      return { alreadyProcessed: false, txn };
+      // Update cache after status change
+      const updatedTxn = { ...txn, status };
+      await this.redisService.set(cacheKey, updatedTxn, 300);
+
+      return { alreadyProcessed: false, txn: updatedTxn };
     });
   }
 
@@ -614,6 +630,14 @@ export class PaymentService {
 
   // ===================== Bank Codes =====================
   async fetchBankCodes() {
+    const cacheKey = 'bank_codes';
+    // Check Redis cache first
+    const cachedBankCodes = await this.redisService.get(cacheKey);
+    if (cachedBankCodes) {
+      this.logger.log('Cache hit for bank codes');
+      return cachedBankCodes;
+    }
+
     const selectedProvider = 'aggregator';
     const providerInstance = this.providers.get(selectedProvider);
     if (!providerInstance) {
@@ -625,7 +649,10 @@ export class PaymentService {
 
     this.logger.log(`Fetching bank codes from provider: ${selectedProvider}`);
     try {
-      return await providerInstance.fetchBankCodes();
+      const bankCodes = await providerInstance.fetchBankCodes();
+      // Cache bank codes with a TTL of 24 hours
+      await this.redisService.set(cacheKey, bankCodes, 86400);
+      return bankCodes;
     } catch (err) {
       this.logger.error(`Failed to fetch bank codes: ${err.message}`);
       throw new InternalServerErrorException(
@@ -701,6 +728,15 @@ export class PaymentService {
 
     this.logger.log(`🔍 Starting verification for reference: ${reference}`);
 
+    const verificationCacheKey = `verification:${reference}`;
+    // Check Redis cache for recent verification
+    const cachedVerification =
+      await this.redisService.get<VerifyResponse>(verificationCacheKey);
+    if (cachedVerification && cachedVerification.data?.status === 'success') {
+      this.logger.log(`Cache hit for verification: ${reference}`);
+      return { message: 'Already verified', success: true };
+    }
+
     const providerKey = process.env.GATEWAY?.toLowerCase() || 'aggregator';
     const verifyProvider = this.providers.get(providerKey);
 
@@ -721,6 +757,9 @@ export class PaymentService {
         verifyProvider!,
       );
     }
+
+    // Cache verification result with a short TTL (1 minute) to handle webhook retries
+    await this.redisService.set(verificationCacheKey, response, 60);
 
     const txnStatus = this.mapProviderStatusToTransactionStatus(
       response.data?.status,
@@ -771,6 +810,9 @@ export class PaymentService {
         throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
       }
 
+      // Invalidate verification cache after successful processing
+      await this.redisService.del(verificationCacheKey);
+
       this.logger.log(`🎉 Transaction ${reference} processed successfully`);
       return {
         message: 'Transaction verified and processed successfully',
@@ -784,20 +826,31 @@ export class PaymentService {
   }
 
   // ===================== Ticket Code Generation =====================
-  private generateTicketCode(): string {
-    const randomPart = randomBytes(5).toString('hex').toUpperCase();
-    return `TCK-${randomPart}`;
-  }
-
   async generateUniqueTicketCode(): Promise<string> {
+    const cacheKeyPrefix = 'ticket_code:';
     let code: string;
     let exists = true;
 
     do {
       code = this.generateTicketCode();
+      const cachedCode = await this.redisService.get(
+        `${cacheKeyPrefix}${code}`,
+      );
+      if (cachedCode) continue; // Code exists in cache
+
       exists = !!(await this.prisma.ticket.findUnique({ where: { code } }));
+      if (!exists) {
+        // Reserve the code in Redis with a TTL of 1 hour to prevent race conditions
+        await this.redisService.set(`${cacheKeyPrefix}${code}`, code, 3600);
+      }
     } while (exists);
 
     return code;
+  }
+
+  // ===================== Ticket Code Generation =====================
+  private generateTicketCode(): string {
+    const randomPart = randomBytes(5).toString('hex').toUpperCase();
+    return `TCK-${randomPart}`;
   }
 }
