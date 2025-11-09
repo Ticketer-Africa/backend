@@ -68,7 +68,7 @@ export class MailService {
       email,
       'Your OTP Code',
       generateOtpTemplate(name, otp),
-      'auth@ticketer.africa',
+      'Ticketer Africa <auth@ticketer.africa>',
     );
   }
 
@@ -77,7 +77,7 @@ export class MailService {
       email,
       'Welcome to Ticketer Africa 🎉',
       registrationTemplate(name),
-      'onboarding@ticketer.africa',
+      'Ticketer Africa <onboarding@ticketer.africa>',
     );
   }
 
@@ -86,7 +86,7 @@ export class MailService {
       email,
       'You just logged in 👀',
       loginTemplate(name),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -95,7 +95,7 @@ export class MailService {
       email,
       'Your Password Was Changed ✅',
       changePasswordTemplate(name),
-      'auth@ticketer.africa',
+      'Ticketer Africa <auth@ticketer.africa>',
     );
   }
 
@@ -104,7 +104,7 @@ export class MailService {
       email,
       'Event Created 🎫',
       eventCreationTemplate(name, eventName),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -139,7 +139,7 @@ export class MailService {
       email,
       'Ticket Purchase Confirmation 🎟️',
       ticketPurchaseBuyerTemplate(name, event, ticketDetails),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -161,7 +161,7 @@ export class MailService {
         proceeds,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -185,7 +185,7 @@ export class MailService {
         buyerName,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -220,7 +220,7 @@ export class MailService {
       email,
       'Resale Ticket Purchase Confirmation 🎟️',
       ticketResaleBuyerTemplate(name, event, ticketDetails),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -242,7 +242,7 @@ export class MailService {
         proceeds,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -264,7 +264,7 @@ export class MailService {
         royalty,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -290,7 +290,7 @@ export class MailService {
         sellerName,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 
@@ -303,7 +303,7 @@ export class MailService {
       email,
       'Your Ticket Was Listed for Resale 🔁',
       ticketResaleTemplate(name, event),
-      'team@ticketer.africa',
+      'Ticketer Africa <team@ticketer.africa>',
     );
   }
 }
