@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 import {
   BadRequestException,
   ForbiddenException,
@@ -11,7 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { RedisService } from '../redis/redis.service'; // Import RedisService
 import slugify from 'slugify';
+import { createHash } from 'crypto'; // For hashing query parameters
 
 @Injectable()
 export class EventService {
@@ -19,10 +21,18 @@ export class EventService {
   constructor(
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
+    private redis: RedisService, // Inject RedisService
   ) {}
 
   // Private Helpers
   private async findEventById(eventId: string) {
+    const cacheKey = `ticketer:event:id:${eventId}`;
+    const cachedEvent = await this.redis.get(cacheKey);
+    if (cachedEvent) {
+      this.logger.log(`Cache hit for event ID: ${eventId}`);
+      return cachedEvent;
+    }
+
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -40,10 +50,20 @@ export class EventService {
       },
     });
     if (!event) throw new NotFoundException('Event not found');
+
+    await this.redis.set(cacheKey, event, 900); // Cache for 15 minutes
+    this.logger.log(`Cached event ID: ${eventId}`);
     return event;
   }
 
   private async findEventBySlug(slug: string) {
+    const cacheKey = `ticketer:event:slug:${slug}`;
+    const cachedEvent = await this.redis.get(cacheKey);
+    if (cachedEvent) {
+      this.logger.log(`Cache hit for event slug: ${slug}`);
+      return cachedEvent;
+    }
+
     const event = await this.prisma.event.findUnique({
       where: { slug },
       select: {
@@ -62,6 +82,9 @@ export class EventService {
       },
     });
     if (!event) throw new NotFoundException('Event not found');
+
+    await this.redis.set(cacheKey, event, 900); // Cache for 15 minutes
+    this.logger.log(`Cached event slug: ${slug}`);
     return event;
   }
 
@@ -178,6 +201,16 @@ export class EventService {
         },
       });
 
+      // Cache the new event
+      await this.redis.set(`ticketer:event:id:${event.id}`, event, 900);
+      await this.redis.set(`ticketer:event:slug:${event.slug}`, event, 900);
+      // Invalidate related caches
+      await this.redis.del(`ticketer:events:all`);
+      await this.redis.del(`ticketer:events:upcoming`);
+      await this.redis.del(`ticketer:events:past`);
+      await this.redis.del(`ticketer:events:organizer:${userId}`);
+      await this.redis.del(`ticketer:events:filtered:*`); // Invalidate all filtered queries
+
       this.logger.log(`Event created with ID: ${event.id}`);
       return event;
     } catch (err) {
@@ -272,6 +305,21 @@ export class EventService {
         },
       });
 
+      // Cache the updated event
+      await this.redis.set(`ticketer:event:id:${eventId}`, updatedEvent, 900);
+      await this.redis.set(
+        `ticketer:event:slug:${updatedEvent.slug}`,
+        updatedEvent,
+        900,
+      );
+      // Invalidate related caches
+      await this.redis.del(`ticketer:events:all`);
+      await this.redis.del(`ticketer:events:upcoming`);
+      await this.redis.del(`ticketer:events:past`);
+      await this.redis.del(`ticketer:events:organizer:${userId}`);
+      await this.redis.del(`ticketer:events:filtered:*`); // Invalidate all filtered queries
+      await this.redis.del(`ticketer:events:user:*`); // Invalidate user events if tickets updated
+
       return updatedEvent;
     } catch (err) {
       this.logger.error(
@@ -297,6 +345,21 @@ export class EventService {
         select: { id: true, isActive: true, slug: true },
       });
 
+      // Cache the updated event
+      const fullEvent = await this.findEventById(id); // Refresh full event data
+      await this.redis.set(`ticketer:event:id:${id}`, fullEvent, 900);
+      await this.redis.set(
+        `ticketer:event:slug:${updatedEvent.slug}`,
+        fullEvent,
+        900,
+      );
+      // Invalidate related caches
+      await this.redis.del(`ticketer:events:all`);
+      await this.redis.del(`ticketer:events:upcoming`);
+      await this.redis.del(`ticketer:events:past`);
+      await this.redis.del(`ticketer:events:organizer:${userId}`);
+      await this.redis.del(`ticketer:events:filtered:*`);
+
       return updatedEvent;
     } catch (err) {
       this.logger.error(
@@ -319,6 +382,15 @@ export class EventService {
       await this.prisma.eventPayout.deleteMany({ where: { eventId: id } });
       await this.prisma.event.delete({ where: { id } });
 
+      // Invalidate caches
+      await this.redis.del(`ticketer:event:id:${id}`);
+      await this.redis.del(`ticketer:event:slug:${event.slug}`);
+      await this.redis.del(`ticketer:events:all`);
+      await this.redis.del(`ticketer:events:upcoming`);
+      await this.redis.del(`ticketer:events:past`);
+      await this.redis.del(`ticketer:events:organizer:${userId}`);
+      await this.redis.del(`ticketer:events:filtered:*`);
+
       return { message: 'Event deleted successfully', eventId: id };
     } catch (err) {
       this.logger.error(
@@ -331,6 +403,13 @@ export class EventService {
 
   // Queries
   async getOrganizerEvents(userId: string) {
+    const cacheKey = `ticketer:events:organizer:${userId}`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log(`Cache hit for organizer events: ${userId}`);
+      return cachedEvents;
+    }
+
     const events = await this.prisma.event.findMany({
       where: { organizerId: userId },
       select: {
@@ -345,7 +424,6 @@ export class EventService {
         bannerUrl: true,
         ticketCategories: true,
         EventPayout: {
-          // relation
           select: { balance: true },
         },
       },
@@ -353,17 +431,29 @@ export class EventService {
     });
 
     if (events.length === 0) {
-      return { message: 'You have not created any events yet' };
+      const result = { message: 'You have not created any events yet' };
+      await this.redis.set(cacheKey, result, 600); // Cache for 10 minutes
+      return result;
     }
 
-    // Flatten payout into "balance"
-    return events.map((event) => ({
+    const result = events.map((event) => ({
       ...event,
       balance: event.EventPayout?.balance ?? 0,
     }));
+
+    await this.redis.set(cacheKey, result, 600); // Cache for 10 minutes
+    this.logger.log(`Cached organizer events: ${userId}`);
+    return result;
   }
 
   async getSingleEvent(eventId: string) {
+    const cacheKey = `ticketer:event:id:${eventId}`;
+    const cachedEvent = await this.redis.get(cacheKey);
+    if (cachedEvent) {
+      this.logger.log(`Cache hit for event ID: ${eventId}`);
+      return cachedEvent;
+    }
+
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: {
@@ -395,6 +485,8 @@ export class EventService {
     });
     if (!event) throw new NotFoundException('Event not found');
 
+    await this.redis.set(cacheKey, event, 900); // Cache for 15 minutes
+    this.logger.log(`Cached event ID: ${eventId}`);
     return event;
   }
 
@@ -403,7 +495,14 @@ export class EventService {
   }
 
   async getAllEvents() {
-    return this.prisma.event.findMany({
+    const cacheKey = `ticketer:events:all`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log('Cache hit for all events');
+      return cachedEvents;
+    }
+
+    const events = await this.prisma.event.findMany({
       where: { isActive: true },
       select: {
         id: true,
@@ -433,6 +532,10 @@ export class EventService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    await this.redis.set(cacheKey, events, 1800); // Cache for 30 minutes
+    this.logger.log('Cached all events');
+    return events;
   }
 
   async getAllEventsFiltered(query: {
@@ -440,19 +543,24 @@ export class EventService {
     from?: string;
     to?: string;
   }) {
-    const filters: any = { isActive: true };
+    const cacheKey = `ticketer:events:filtered:${createHash('md5').update(JSON.stringify(query)).digest('hex')}`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log(`Cache hit for filtered events: ${cacheKey}`);
+      return cachedEvents;
+    }
 
+    const filters: any = { isActive: true };
     if (query.name) {
       filters.name = { contains: query.name, mode: 'insensitive' };
     }
-
     if (query.from || query.to) {
       filters.createdAt = {};
       if (query.from) filters.createdAt.gte = new Date(query.from);
       if (query.to) filters.createdAt.lte = new Date(query.to);
     }
 
-    return this.prisma.event.findMany({
+    const events = await this.prisma.event.findMany({
       where: filters,
       select: {
         id: true,
@@ -469,9 +577,20 @@ export class EventService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    await this.redis.set(cacheKey, events, 600); // Cache for 10 minutes
+    this.logger.log(`Cached filtered events: ${cacheKey}`);
+    return events;
   }
 
   async getUserEvents(userId: string) {
+    const cacheKey = `ticketer:events:user:${userId}`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log(`Cache hit for user events: ${userId}`);
+      return cachedEvents;
+    }
+
     const tickets = await this.prisma.ticket.findMany({
       where: { userId },
       select: {
@@ -517,11 +636,21 @@ export class EventService {
       {} as Record<string, any>,
     );
 
-    return Object.values(grouped);
+    const result = Object.values(grouped);
+    await this.redis.set(cacheKey, result, 600); // Cache for 10 minutes
+    this.logger.log(`Cached user events: ${userId}`);
+    return result;
   }
 
   async getUpcomingEvents() {
-    return this.prisma.event.findMany({
+    const cacheKey = `ticketer:events:upcoming`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log('Cache hit for upcoming events');
+      return cachedEvents;
+    }
+
+    const events = await this.prisma.event.findMany({
       where: {
         isActive: true,
         date: { gte: new Date() },
@@ -540,10 +669,21 @@ export class EventService {
       },
       orderBy: { date: 'asc' },
     });
+
+    await this.redis.set(cacheKey, events, 1800); // Cache for 30 minutes
+    this.logger.log('Cached upcoming events');
+    return events;
   }
 
   async getPastEvents() {
-    return this.prisma.event.findMany({
+    const cacheKey = `ticketer:events:past`;
+    const cachedEvents = await this.redis.get(cacheKey);
+    if (cachedEvents) {
+      this.logger.log('Cache hit for past events');
+      return cachedEvents;
+    }
+
+    const events = await this.prisma.event.findMany({
       where: {
         isActive: true,
         date: { lt: new Date() },
@@ -562,5 +702,9 @@ export class EventService {
       },
       orderBy: { date: 'desc' },
     });
+
+    await this.redis.set(cacheKey, events, 1800); // Cache for 30 minutes
+    this.logger.log('Cached past events');
+    return events;
   }
 }

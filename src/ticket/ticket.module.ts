@@ -4,10 +4,11 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { TicketService } from './ticket.service';
 import { TicketController } from './ticket.controller';
 import { PaymentModule } from 'src/payment/payment.module';
+import { RedisService } from 'src/redis/redis.service';
 
 @Module({
   imports: [HttpModule, PrismaModule, PaymentModule],
-  providers: [TicketService],
+  providers: [TicketService, RedisService],
   controllers: [TicketController],
 })
 export class TicketModule {}

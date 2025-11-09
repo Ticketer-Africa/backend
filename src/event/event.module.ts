@@ -6,6 +6,7 @@ import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { PayoutCronService } from './cron/event-payout.cron';
+import { RedisService } from 'src/redis/redis.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule],
@@ -14,6 +15,7 @@ import { PayoutCronService } from './cron/event-payout.cron';
     PrismaService,
     CloudinaryService,
     PayoutCronService,
+    RedisService,
   ],
   controllers: [EventController],
 })
