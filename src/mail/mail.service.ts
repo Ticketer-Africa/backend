@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
 import { catchError, firstValueFrom, retry, throwError } from 'rxjs';
 import {
@@ -34,7 +36,11 @@ export class MailService {
     private httpService: HttpService,
   ) {}
 
-  // inside your MailService
+  // helper to create the "from" string
+  private formatFrom(displayName: string, email: string) {
+    return `"${displayName}" <${email}>`;
+  }
+
   private async sendMail(
     to: string,
     subject: string,
@@ -63,12 +69,13 @@ export class MailService {
     }
   }
 
+  // Auth/OTP mails
   async sendOtp(email: string, name: string, otp: string) {
     await this.sendMail(
       email,
       'Your OTP Code',
       generateOtpTemplate(name, otp),
-      'auth@ticketer.africa',
+      this.formatFrom('Ticketer Africa Auth', 'auth@ticketer.africa'),
     );
   }
 
@@ -77,7 +84,10 @@ export class MailService {
       email,
       'Welcome to Ticketer Africa 🎉',
       registrationTemplate(name),
-      'onboarding@ticketer.africa',
+      this.formatFrom(
+        'Ticketer Africa Onboarding',
+        'onboarding@ticketer.africa',
+      ),
     );
   }
 
@@ -86,7 +96,7 @@ export class MailService {
       email,
       'You just logged in 👀',
       loginTemplate(name),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -95,7 +105,7 @@ export class MailService {
       email,
       'Your Password Was Changed ✅',
       changePasswordTemplate(name),
-      'auth@ticketer.africa',
+      this.formatFrom('Ticketer Africa Auth', 'auth@ticketer.africa'),
     );
   }
 
@@ -104,10 +114,11 @@ export class MailService {
       email,
       'Event Created 🎫',
       eventCreationTemplate(name, eventName),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
+  // Ticket Purchase Mails
   async sendTicketPurchaseBuyerMail(
     email: string,
     name: string,
@@ -130,7 +141,7 @@ export class MailService {
           ticketId,
           code,
           categoryName,
-          qrCodeDataUrl: qrUrl, // <-- now a real hosted image URL
+          qrCodeDataUrl: qrUrl,
         };
       }),
     );
@@ -139,7 +150,7 @@ export class MailService {
       email,
       'Ticket Purchase Confirmation 🎟️',
       ticketPurchaseBuyerTemplate(name, event, ticketDetails),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -161,7 +172,7 @@ export class MailService {
         proceeds,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -185,10 +196,11 @@ export class MailService {
         buyerName,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
+  // Ticket Resale Mails
   async sendTicketResaleBuyerMail(
     email: string,
     name: string,
@@ -220,7 +232,7 @@ export class MailService {
       email,
       'Resale Ticket Purchase Confirmation 🎟️',
       ticketResaleBuyerTemplate(name, event, ticketDetails),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -242,7 +254,7 @@ export class MailService {
         proceeds,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -264,7 +276,7 @@ export class MailService {
         royalty,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -290,7 +302,7 @@ export class MailService {
         sellerName,
         ticketCategories,
       ),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 
@@ -303,7 +315,7 @@ export class MailService {
       email,
       'Your Ticket Was Listed for Resale 🔁',
       ticketResaleTemplate(name, event),
-      'team@ticketer.africa',
+      this.formatFrom('Ticketer Africa', 'team@ticketer.africa'),
     );
   }
 }
