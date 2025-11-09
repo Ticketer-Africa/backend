@@ -20,6 +20,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { MailService } from './mail/mail.service';
 import { KoraPayinProvider } from './payment/providers/kora.provider';
 import { AggregatorPayinProvider } from './payment/providers/aggregator.provider';
+import { RedisService } from './redis/redis.service';
 
 @Module({
   imports: [
@@ -51,8 +52,10 @@ import { AggregatorPayinProvider } from './payment/providers/aggregator.provider
     TicketService,
     PaymentService,
     MailService,
+    RedisService,
     KoraPayinProvider,
     AggregatorPayinProvider,
   ],
+  exports: [RedisService],
 })
-export class AppModule { }
+export class AppModule {}

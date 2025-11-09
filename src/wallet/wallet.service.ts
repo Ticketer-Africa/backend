@@ -1,4 +1,4 @@
-/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/require-await */
 import {
   BadRequestException,
   ForbiddenException,
@@ -10,12 +10,14 @@ import { PaymentService } from 'src/payment/payment.service';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WithdrawalDTO } from 'src/payment/dto/initiate.dto';
+import { RedisService } from 'src/redis/redis.service';
 
 @Injectable()
 export class WalletService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly paymentService: PaymentService,
+    private readonly redisService: RedisService,
   ) {}
 
   // ----------------------
@@ -46,7 +48,6 @@ export class WalletService {
     return bcrypt.hash(pin, salt);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   private async comparePin(plain: string, hashed: string) {
     return bcrypt.compare(plain, hashed);
   }
@@ -72,15 +73,39 @@ export class WalletService {
     },
     tx: any, // transaction client
   ) {
-    const user = await tx.user.findUnique({ where: { id: userId } });
-    if (user?.role === 'USER') {
-      throw new BadRequestException(
-        'Users cannot withdraw funds...buy a ticket instead',
+    const cacheKey = `wallet:${userId}`;
+    // Check Redis cache for wallet data
+    const cachedWallet = await this.redisService.get<{
+      userId: string;
+      balance: number;
+      pin?: string;
+    }>(cacheKey);
+    let wallet;
+
+    if (cachedWallet) {
+      wallet = cachedWallet;
+    } else {
+      // Fetch user and wallet from database within transaction
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (user?.role === 'USER') {
+        throw new BadRequestException(
+          'Users cannot withdraw funds...buy a ticket instead',
+        );
+      }
+
+      wallet = await tx.wallet.findUnique({ where: { userId } });
+      if (!wallet) {
+        throw new NotFoundException('Wallet not found');
+      }
+      // Cache wallet data with a 1-minute TTL
+      await this.redisService.set(
+        cacheKey,
+        { userId: wallet.userId, balance: wallet.balance, pin: wallet.pin },
+        60,
       );
     }
 
-    const wallet = await tx.wallet.findUnique({ where: { userId } });
-    if (!wallet?.pin) {
+    if (!wallet.pin) {
       throw new BadRequestException(
         'PIN not set. Please set your wallet PIN before withdrawing.',
       );
@@ -89,7 +114,7 @@ export class WalletService {
     const isPinValid = await this.comparePin(payload.pin, wallet.pin);
     if (!isPinValid) throw new BadRequestException('Invalid PIN provided.');
 
-    if (wallet.balance.lt(payload.amount)) {
+    if (wallet.balance < payload.amount) {
       throw new BadRequestException('Insufficient wallet balance');
     }
 
@@ -131,12 +156,57 @@ export class WalletService {
     const payoutResult =
       await this.paymentService.initiateWithdrawal(withdrawalDto);
 
-    await tx.wallet.update({
+    const updatedWallet = await tx.wallet.update({
       where: { userId },
       data: { balance: { decrement: payload.amount } },
     });
 
+    // Update or invalidate cache after balance change
+    const cacheKey = `wallet:${userId}`;
+    await this.redisService.set(
+      cacheKey,
+      {
+        userId: updatedWallet.userId,
+        balance: updatedWallet.balance,
+        pin: updatedWallet.pin,
+      },
+      60,
+    );
+
     return { reference, payoutResult };
+  }
+
+  // ----------------------
+  // Public Methods
+  // ----------------------
+
+  async withdraw(
+    userId: string,
+    payload: {
+      email: string;
+      name: string;
+      pin: string;
+      amount: number;
+      account_number: string;
+      bank_code: string;
+      narration?: string;
+    },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.validateWithdrawal(userId, payload, tx);
+
+      const { reference, payoutResult } = await this.processWithdrawal(
+        userId,
+        payload,
+        tx,
+      );
+
+      return {
+        message: 'Withdrawal initiated successfully',
+        reference,
+        payout: payoutResult,
+      };
+    });
   }
 
   // ----------------------
@@ -212,37 +282,6 @@ export class WalletService {
     return { balance: wallet.balance };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async withdraw(
-    userId: string,
-    payload: {
-      email: string;
-      name: string;
-      pin: string;
-      amount: number;
-      account_number: string;
-      bank_code: string;
-      narration?: string;
-    },
-  ) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.validateWithdrawal(userId, payload, tx);
-
-      const { reference, payoutResult } = await this.processWithdrawal(
-        userId,
-        payload,
-        tx,
-      );
-
-      return {
-        message: 'Withdrawal initiated successfully',
-        reference,
-        payout: payoutResult,
-      };
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/require-await
   async setWalletPin(
     userId: string,
     payload: { oldPin?: string; newPin: string },

@@ -13,6 +13,7 @@ import { BuyResaleDto } from './dto/buy-resale.dto';
 import { RemoveResaleDto } from './dto/remove-resale.dto';
 import { TransactionStatus, TransactionType } from '@prisma/client';
 import { PayinResponse, PaymentDTO } from 'src/payment/dto/initiate.dto';
+import { RedisService } from 'src/redis/redis.service';
 
 @Injectable()
 export class TicketService {
@@ -21,6 +22,7 @@ export class TicketService {
   constructor(
     private prisma: PrismaService,
     private paymentService: PaymentService,
+    private redisService: RedisService,
   ) {}
 
   // ===================== Private Helpers =====================
@@ -788,7 +790,31 @@ export class TicketService {
   }) {
     const { ticketId, code, eventId } = payload;
     if (!ticketId && !code) {
+      this.logger.warn('No ticketId or code provided for verification');
       throw new BadRequestException('Either ticketId or code is required');
+    }
+
+    const cacheKey = ticketId
+      ? `ticket:${ticketId}`
+      : `ticket:code:${code}:${eventId}`;
+    // Check Redis cache for ticket data
+    const cachedTicket = await this.redisService.get<{
+      id: string;
+      code: string;
+      eventId: string;
+      userId: string;
+      isUsed: boolean;
+      event: {
+        organizerId: string;
+        name: string;
+        date: Date;
+        isActive: boolean;
+      };
+      ticketCategory: { name: string; price: number };
+    }>(cacheKey);
+    if (cachedTicket) {
+      this.logger.log(`Cache hit for ticket: ${ticketId || code}`);
+      return cachedTicket;
     }
 
     const ticket = await this.prisma.ticket.findFirst({
@@ -805,15 +831,42 @@ export class TicketService {
         ticketCategory: { select: { name: true, price: true } },
       },
     });
-    if (!ticket) throw new NotFoundException('Ticket not found');
+    if (!ticket) {
+      this.logger.warn(
+        `Ticket not found for event ${eventId}, ticketId: ${ticketId || code}`,
+      );
+      throw new NotFoundException('Ticket not found');
+    }
+
+    // Cache ticket data with a 1-minute TTL
+    await this.redisService.set(cacheKey, ticket, 60);
     return ticket;
   }
 
   private async markTicketAsUsed(tx: any, ticketId: string) {
-    await tx.ticket.update({
+    const updatedTicket = await tx.ticket.update({
       where: { id: ticketId },
       data: { isUsed: true },
+      select: {
+        id: true,
+        code: true,
+        eventId: true,
+        userId: true,
+        isUsed: true,
+        event: {
+          select: { organizerId: true, name: true, date: true, isActive: true },
+        },
+        ticketCategory: { select: { name: true, price: true } },
+      },
     });
+
+    // Update cache after marking ticket as used
+    const cacheKey = `ticket:${ticketId}`;
+    await this.redisService.set(cacheKey, updatedTicket, 60);
+
+    // Optionally update cache for code-based key if code is known
+    const codeCacheKey = `ticket:code:${updatedTicket.code}:${updatedTicket.eventId}`;
+    await this.redisService.set(codeCacheKey, updatedTicket, 60);
   }
 
   async verifyTicket(payload: {
@@ -839,6 +892,7 @@ export class TicketService {
       markedUsed = true;
     }
 
+    this.logger.log(`Ticket verification for ${ticket.id}: ${message}`);
     return {
       ticketId: ticket.id,
       code: ticket.code,
