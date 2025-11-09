@@ -17,7 +17,7 @@ export function ticketPurchaseBuyerTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Ticket Purchase Confirmation - Ticketer</title>
+      <title>Ticket Purchase Confirmation - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -36,13 +36,13 @@ export function ticketPurchaseBuyerTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -99,7 +99,7 @@ export function ticketPurchaseBuyerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -129,12 +129,12 @@ export function ticketPurchaseBuyerTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -142,7 +142,7 @@ export function ticketPurchaseBuyerTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you purchased tickets through our platform.
                   </p>
                 </td>
@@ -171,7 +171,7 @@ export function ticketPurchaseOrganizerTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Ticket Sale Notification - Ticketer</title>
+      <title>Ticket Sale Notification - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -190,13 +190,13 @@ export function ticketPurchaseOrganizerTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -232,7 +232,7 @@ export function ticketPurchaseOrganizerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -261,12 +261,12 @@ export function ticketPurchaseOrganizerTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Organize events and track sales seamlessly with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Organize events and track sales seamlessly with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -274,7 +274,7 @@ export function ticketPurchaseOrganizerTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you are an event organizer on our platform.
                   </p>
                 </td>
@@ -304,7 +304,7 @@ export function ticketPurchaseAdminTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Platform Transaction Notification - Ticketer</title>
+      <title>Platform Transaction Notification - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -323,13 +323,13 @@ export function ticketPurchaseAdminTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -366,7 +366,7 @@ export function ticketPurchaseAdminTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/admin-dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/admin-dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Admin Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -395,12 +395,12 @@ export function ticketPurchaseAdminTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Manage events and transactions with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Manage events and transactions with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Monitor platform earnings in your wallet
@@ -411,7 +411,7 @@ export function ticketPurchaseAdminTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you are an admin on our platform.
                   </p>
                 </td>
@@ -438,7 +438,7 @@ export function ticketResaleBuyerTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Resale Ticket Purchase Confirmation - Ticketer</title>
+      <title>Resale Ticket Purchase Confirmation - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -457,13 +457,13 @@ export function ticketResaleBuyerTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -520,7 +520,7 @@ export function ticketResaleBuyerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -550,12 +550,12 @@ export function ticketResaleBuyerTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -563,7 +563,7 @@ export function ticketResaleBuyerTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you purchased resale tickets through our platform.
                   </p>
                 </td>
@@ -592,7 +592,7 @@ export function ticketResaleSellerTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Ticket Resale Confirmation - Ticketer</title>
+      <title>Ticket Resale Confirmation - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -611,13 +611,13 @@ export function ticketResaleSellerTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -653,7 +653,7 @@ export function ticketResaleSellerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -682,12 +682,12 @@ export function ticketResaleSellerTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -695,7 +695,7 @@ export function ticketResaleSellerTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you sold tickets through our platform.
                   </p>
                 </td>
@@ -724,7 +724,7 @@ export function ticketResaleOrganizerTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Resale Royalty Notification - Ticketer</title>
+      <title>Resale Royalty Notification - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -743,13 +743,13 @@ export function ticketResaleOrganizerTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -785,7 +785,7 @@ export function ticketResaleOrganizerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -814,12 +814,12 @@ export function ticketResaleOrganizerTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Organize events and track sales seamlessly with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Organize events and track sales seamlessly with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -827,7 +827,7 @@ export function ticketResaleOrganizerTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you are an event organizer on our platform.
                   </p>
                 </td>
@@ -858,7 +858,7 @@ export function ticketResaleAdminTemplate(
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Resale Transaction Notification - Ticketer</title>
+      <title>Resale Transaction Notification - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -877,13 +877,13 @@ export function ticketResaleAdminTemplate(
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -921,7 +921,7 @@ export function ticketResaleAdminTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/admin-dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/admin-dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Admin Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -950,12 +950,12 @@ export function ticketResaleAdminTemplate(
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Manage events and transactions with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Manage events and transactions with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Monitor platform earnings in your wallet
@@ -966,7 +966,7 @@ export function ticketResaleAdminTemplate(
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you are an admin on our platform.
                   </p>
                 </td>
@@ -989,7 +989,7 @@ export function ticketResaleTemplate(name: string, event: string): string {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Ticket Listed for Resale - Ticketer</title>
+      <title>Ticket Listed for Resale - Ticketer Africa</title>
     </head>
     <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif; line-height: 1.6;">
       <!-- Preheader text -->
@@ -1008,13 +1008,13 @@ export function ticketResaleTemplate(name: string, event: string): string {
       <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px;">
         <img 
           src="https://res.cloudinary.com/dszax8c6n/image/upload/v1757404493/logo_obefmi.png" 
-          alt="Ticketer Logo" 
+          alt="Ticketer Africa Logo" 
           width="32" 
           height="32" 
           style="display: block; max-width: 32px; height: auto;"
         />
         <h1 style="font-size: 24px; color: #1E88E5; margin: 0; font-weight: 600; letter-spacing: -0.3px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif;">
-          Ticketer
+          Ticketer Africa
         </h1>
       </div>
     </td>
@@ -1038,7 +1038,7 @@ export function ticketResaleTemplate(name: string, event: string): string {
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.com/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -1067,12 +1067,12 @@ export function ticketResaleTemplate(name: string, event: string): string {
               <tr>
                 <td style="text-align: center; padding: 24px 20px;">
                   <p style="font-size: 14px; color: #666666; margin: 0 0 16px 0;">
-                    – The Ticketer Team
+                    – The Ticketer Africa Team
                   </p>
                   
                   <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <p style="color: #333333; margin: 8px 0; font-size: 14px; line-height: 1.5; font-weight: 500;">
-                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.com" style="color: #1E88E5; text-decoration: underline;">Ticketer</a>
+                      Discover events, buy tickets, and resell securely with <a href="https://ticketer.africa" style="color: #1E88E5; text-decoration: underline;">Ticketer Africa</a>
                     </p>
                     <p style="color: #666666; margin: 8px 0; font-size: 14px; line-height: 1.5;">
                       Questions? Reach us at <a href="mailto:ticketerafrica@gmail.com" style="color: #1E88E5; text-decoration: underline;">ticketerafrica@gmail.com</a>
@@ -1080,7 +1080,7 @@ export function ticketResaleTemplate(name: string, event: string): string {
                   </div>
                   
                   <p style="font-size: 12px; color: #999999; margin: 16px 0 0 0; line-height: 1.4;">
-                    © 2025 Ticketer. All rights reserved.<br>
+                    © 2025 Ticketer Africa. All rights reserved.<br>
                     This email was sent because you listed a ticket for resale on our platform.
                   </p>
                 </td>

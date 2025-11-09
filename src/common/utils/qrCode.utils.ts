@@ -13,7 +13,7 @@ export interface QRTicketData {
 export const generateTicketQRBuffer = (
   ticketData: QRTicketData,
 ): Promise<Buffer> => {
-  const baseUrl = process.env.FRONTEND_URL || 'https://ticketer.com';
+  const baseUrl = process.env.FRONTEND_URL || 'https://ticketer.africa';
   const verificationUrl = `${baseUrl}/verify-ticket?data=${encodeURIComponent(
     JSON.stringify(ticketData),
   )}`;

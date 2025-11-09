@@ -19,11 +19,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       password: process.env.REDIS_PASSWORD || undefined,
       tls: process.env.REDIS_TLS_ENABLED === 'true' ? {} : undefined,
       retryStrategy: (times) => {
-        const delay = Math.min(times * 100, 3000); // Exponential backoff, max 3s
-        return times > 3 ? null : delay; // Stop after 3 retries
+        const delay = Math.min(times * 100, 3000);
+        return times > 3 ? null : delay;
       },
-      maxRetriesPerRequest: null, // For compatibility with queue libraries if needed
-      enableOfflineQueue: true, // Queue commands when offline
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: true,
     });
 
     this.client.on('connect', () => this.logger.log('✅ Connected to Redis'));
@@ -62,7 +62,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       return JSON.parse(data) as T;
     } catch {
-      return data as T; // Fallback to string if JSON parsing fails
+      return data as T;
     }
   }
 

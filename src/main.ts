@@ -11,9 +11,9 @@ async function bootstrap() {
   const allowedOrigins = [
     'http://localhost:3000',
     'https://ticketer-app-staging.vercel.app',
-    'https://github.com/Ticketer-Africa/backend.git',
+    'https://github.com/Ticketer Africa-Africa/backend.git',
     'frontend-git-staging-mayokun-s-projects.vercel.app',
-    'https://www.ticketer.africa'
+    'https://www.ticketer.africa',
   ];
   app.enableCors({
     origin: (origin, callback) => {
@@ -60,15 +60,15 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Ticketer API')
-    .setDescription('API docs for Ticketer platform')
+    .setTitle('Ticketer Africa API')
+    .setDescription('API docs for Ticketer Africa platform')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document, {
-    customSiteTitle: 'Ticketer API Docs',
+    customSiteTitle: 'Ticketer Africa API Docs',
     customfavIcon: 'https://avatars.githubusercontent.com/u/6936373?s=200&v=4',
     customJs: [
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-bundle.min.js',

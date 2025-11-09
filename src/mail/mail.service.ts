@@ -64,7 +64,7 @@ export class MailService {
   async sendRegistrationMail(email: string, name: string) {
     await this.sendMail(
       email,
-      'Welcome to Ticketer 🎉',
+      'Welcome to Ticketer Africa 🎉',
       registrationTemplate(name),
     );
   }
