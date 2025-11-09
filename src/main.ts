@@ -12,7 +12,7 @@ async function bootstrap() {
     'http://localhost:3000',
     'https://ticketer-app-staging.vercel.app',
     'https://github.com/Ticketer Africa-Africa/backend.git',
-    'frontend-git-staging-mayokun-s-projects.vercel.app',
+    'https://frontend-git-staging-ticketer-africas-projects.vercel.app',
     'https://www.ticketer.africa',
   ];
   app.enableCors({
