@@ -99,8 +99,8 @@ export function ticketPurchaseBuyerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
-                      View in Dashboard
+                    <a href="https://ticketer.africa/my-tickets" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      View in Your Tickets
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       Contact Support
@@ -232,7 +232,7 @@ export function ticketPurchaseOrganizerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/organizer" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -520,8 +520,8 @@ export function ticketResaleBuyerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
-                      View in Dashboard
+                    <a href="https://ticketer.africa/my-tickets" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      View in Your Tickets
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       Contact Support
@@ -653,7 +653,7 @@ export function ticketResaleSellerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/explore" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -785,7 +785,7 @@ export function ticketResaleOrganizerTemplate(
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/organizer" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       View in Dashboard
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
@@ -1038,8 +1038,8 @@ export function ticketResaleTemplate(name: string, event: string): string {
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
-                      View in Dashboard
+                    <a href="https://ticketer.africa/resale" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                      View in Resale Market
                     </a>
                     <a href="mailto:ticketerafrica@gmail.com" style="display: inline-block; background-color: transparent; color: #1E88E5; text-decoration: none; padding: 12px 24px; border: 1px solid #1E88E5; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       Contact Support

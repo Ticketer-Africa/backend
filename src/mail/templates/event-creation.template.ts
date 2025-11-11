@@ -65,7 +65,7 @@ export function eventCreationTemplate(name: string, eventName: string): string {
 
                   <!-- Action buttons -->
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://ticketer.africa/dashboard" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
+                    <a href="https://ticketer.africa/organizer" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
                       Manage Event
                     </a>
                     <a href="https://ticketer.africa/share-event" style="display: inline-block; background-color: #1E88E5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; margin: 0 8px 8px 8px;">
