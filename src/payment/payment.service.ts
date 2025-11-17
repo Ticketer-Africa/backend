@@ -113,6 +113,7 @@ export class PaymentService {
             select: {
               id: true,
               name: true,
+              slug: true,
               organizerId: true,
               primaryFeeBps: true,
               organizer: {
@@ -185,6 +186,51 @@ export class PaymentService {
       update: { balance: { increment: amount } },
       select: { userId: true, balance: true },
     });
+  }
+
+  private async invalidateCachesAfterSuccessfulTransaction(
+    txn: any,
+    ticketIds: string[],
+  ) {
+    const eventId = txn.eventId;
+    const userId = txn.userId;
+    const organizerId = txn.event.organizerId;
+
+    const keysToDelete: string[] = [
+      `ticketer:event:id:${eventId}`,
+      `ticketer:event:slug:${txn.event.slug}`,
+      `ticketer:events:organizer:${organizerId}`,
+      `ticketer:events:user:${userId}`,
+      `ticketer:events:all`,
+      `ticketer:events:upcoming`,
+      `ticketer:events:past`,
+    ];
+
+    if (txn.type === TransactionType.RESALE) {
+      keysToDelete.push(`wallet:${userId}`);
+    }
+
+    for (const ticketId of ticketIds) {
+      keysToDelete.push(`ticket:${ticketId}`);
+    }
+
+    const ticketCodes = await this.prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { code: true },
+    });
+    for (const { code } of ticketCodes) {
+      keysToDelete.push(`ticket:code:${code}:${eventId}`);
+    }
+
+    if (keysToDelete.length > 0) {
+      for (const key of keysToDelete) {
+        await this.redisService.del(key);
+      }
+
+      this.logger.log(
+        `Invalidated ${keysToDelete.length} cache keys after successful ${txn.type} (ref: ${txn.reference})`,
+      );
+    }
   }
 
   // ===================== Email and QR Code Helpers =====================
@@ -799,17 +845,22 @@ export class PaymentService {
     this.logger.log(`🎟️ Tickets linked: ${ticketIds.join(', ')}`);
 
     try {
+      let processedTicketIds: string[];
       if (txn.type === TransactionType.PURCHASE) {
         this.logger.log(`🛒 Processing purchase for ${reference}`);
-        await this.processPurchaseFlow(txn, ticketIds);
+        processedTicketIds = await this.processPurchaseFlow(txn, ticketIds);
       } else if (txn.type === TransactionType.RESALE) {
         this.logger.log(`♻️ Processing resale for ${reference}`);
-        await this.processResaleFlow(txn, ticketIds);
+        processedTicketIds = await this.processResaleFlow(txn, ticketIds);
       } else {
         this.logger.error(`Invalid transaction type: ${txn.type}`);
         throw new BadRequestException(`Invalid transaction type: ${txn.type}`);
       }
 
+      await this.invalidateCachesAfterSuccessfulTransaction(
+        txn,
+        processedTicketIds,
+      );
       // Invalidate verification cache after successful processing
       await this.redisService.del(verificationCacheKey);
 
