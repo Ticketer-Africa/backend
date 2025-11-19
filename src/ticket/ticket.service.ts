@@ -603,6 +603,13 @@ export class TicketService {
   async listForResale(dto: ListResaleDto, userId: string) {
     const { ticketId, resalePrice, bankCode, accountNumber } = dto;
 
+    if (resalePrice < 1200) {
+      this.logger.error(
+        `Resale Price must be more than 1200 for Ticket ${ticketId}`,
+      );
+      throw new BadRequestException(`Resale price must be more than 1200`);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       await this.validateTicketForResale(tx, ticketId, userId);
 
@@ -724,7 +731,13 @@ export class TicketService {
         resalePrice: true,
         listedAt: true,
         event: {
-          select: { name: true, date: true, isActive: true, bannerUrl: true },
+          select: {
+            name: true,
+            date: true,
+            isActive: true,
+            bannerUrl: true,
+            location: true,
+          },
         },
         user: {
           select: { id: true, name: true, email: true, profileImage: true },
