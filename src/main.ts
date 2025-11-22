@@ -1,8 +1,9 @@
-/* eslint-disable prettier/prettier */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
+import { setupSession } from './session.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -49,6 +50,10 @@ async function bootstrap() {
     }
     next();
   });
+
+  app.use(cookieParser());
+
+  await setupSession(app);
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { JwtGuard } from 'src/auth/guards/jwt.guard';
+import { SessionGuard } from 'src/auth/guards/session.guard';
 import { TicketService } from './ticket.service';
 import { BuyNewDto } from './dto/buy-new.dto';
 import { ListResaleDto } from './dto/list-resale.dto';
@@ -30,7 +30,7 @@ import { RemoveResaleDto } from './dto/remove-resale.dto';
 export class TicketController {
   constructor(private ticketService: TicketService) {}
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Post('verify')
   @ApiOperation({
     summary: 'Verify a ticket (scan or code input)',
@@ -81,11 +81,11 @@ export class TicketController {
   verifyTicket(@Body() body, @Req() req) {
     return this.ticketService.verifyTicket({
       ...body,
-      userId: req.user.sub,
+      userId: req.user.id,
     });
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Post('buy')
   @ApiOperation({
     summary: 'Buy new tickets',
@@ -111,7 +111,8 @@ export class TicketController {
               ticketCategoryId: {
                 type: 'string',
                 example: 'clx81wekg0000ueaom6b8x7ti',
-                description: 'UUID of the ticket category (e.g., VVIP, VIP, Regular)',
+                description:
+                  'UUID of the ticket category (e.g., VVIP, VIP, Regular)',
               },
               quantity: { type: 'number', example: 2 },
             },
@@ -162,11 +163,11 @@ export class TicketController {
     @Body() dto: BuyNewDto,
     @Req() req,
   ) {
-    return this.ticketService.buyNewTicket(dto, req.user.sub, clientPage);
+    return this.ticketService.buyNewTicket(dto, req.user.id, clientPage);
   }
 
   @Post('resale/buy')
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @ApiOperation({
     summary: 'Buy resale tickets',
     description:
@@ -205,10 +206,10 @@ export class TicketController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   buyResaleTickets(@Body() dto: BuyResaleDto, @Req() req) {
-    return this.ticketService.buyResaleTicket(dto, req.user.sub);
+    return this.ticketService.buyResaleTicket(dto, req.user.id);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Post('resale/list')
   @ApiOperation({
     summary: 'List ticket for resale',
@@ -250,10 +251,10 @@ export class TicketController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   listForResale(@Body() dto: ListResaleDto, @Req() req) {
-    return this.ticketService.listForResale(dto, req.user.sub);
+    return this.ticketService.listForResale(dto, req.user.id);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Post('resale/remove')
   @ApiOperation({
     summary: 'Remove ticket from resale',
@@ -296,7 +297,7 @@ export class TicketController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   removeFromResale(@Body() dto: RemoveResaleDto, @Req() req) {
-    return this.ticketService.removeFromResale(dto, req.user.sub);
+    return this.ticketService.removeFromResale(dto, req.user.id);
   }
 
   @Get('resell')
@@ -355,7 +356,7 @@ export class TicketController {
     return this.ticketService.getResaleTickets(eventId);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Get('my/resales')
   @ApiOperation({
     summary: 'Get my resale listings',
@@ -397,10 +398,10 @@ export class TicketController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   myListings(@Req() req) {
-    return this.ticketService.getMyListings(req.user.sub);
+    return this.ticketService.getMyListings(req.user.id);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Get('bought-from-resale')
   @ApiOperation({
     summary: 'Get tickets bought from resale',
@@ -440,10 +441,10 @@ export class TicketController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   boughtFromResale(@Req() req) {
-    return this.ticketService.getBoughtFromResale(req.user.sub);
+    return this.ticketService.getBoughtFromResale(req.user.id);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Get('my')
   @ApiOperation({
     summary: 'Get my tickets',
@@ -479,6 +480,6 @@ export class TicketController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   myTickets(@Req() req) {
-    return this.ticketService.getMyTickets(req.user.sub);
+    return this.ticketService.getMyTickets(req.user.id);
   }
 }

@@ -582,8 +582,8 @@ export class PaymentService {
       destination: {
         type: 'bank_account',
         bank_account: {
-          bank: process.env.TEST_BANK_CODE || ticket.bankCode,
-          account: process.env.TEST_BANK_ACCOUNT || ticket.accountNumber,
+          bank: ticket.bankCode,
+          account: ticket.accountNumber,
           account_name: seller.name || 'Unknown',
         },
       },

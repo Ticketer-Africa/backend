@@ -1,9 +1,9 @@
-/* eslint-disable prettier/prettier */
 import {
   Injectable,
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,16 +13,15 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
-import { JwtService } from '@nestjs/jwt';
 import { generateOTP, getOtpExpiry } from '../common/utils/otp.util';
 import { MailService } from '../mail/mail.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     private prisma: PrismaService,
-    private jwtService: JwtService,
     private mailService: MailService,
   ) {}
 
@@ -44,7 +43,7 @@ export class AuthService {
   }
 
   private async findUserById(id: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -55,8 +54,16 @@ export class AuthService {
         isVerified: true,
         otp: true,
         otpExpiresAt: true,
+        profileImage: true,
       },
     });
+
+    if (!user) {
+      this.logger.warn(`User not found with ID: ${id}`);
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
   }
 
   private hashPassword(password: string): Promise<string> {
@@ -133,7 +140,7 @@ export class AuthService {
   }
 
   // Login
-  async login(dto: LoginDto) {
+  async login(req: any, dto: LoginDto) {
     const user = await this.findUserByEmail(dto.email);
     if (!user) throw new NotFoundException('User not found');
 
@@ -142,17 +149,21 @@ export class AuthService {
       user.password,
     );
     if (!isMatch) throw new BadRequestException('Invalid password');
+
     if (!user.isVerified) throw new BadRequestException('Email not verified');
 
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    const token = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_SECRET,
-      expiresIn: '2 days',
-    });
+    // store user in session
+    req.session.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+    };
 
     await this.mailService.sendLoginMail(user.email, user.name ?? 'user');
+
     return {
-      access_token: token,
+      message: 'Logged in successfully',
       user: {
         id: user.id,
         name: user.name,
@@ -254,5 +265,20 @@ export class AuthService {
     });
 
     return { message: 'Password changed successfully' };
+  }
+
+  async getCurrentUser(userId: string) {
+    this.logger.log(`Fetching user with ID: ${userId}`);
+    const user = await this.findUserById(userId);
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileImage: user.profileImage,
+        isVerified: user.isVerified,
+      },
+    };
   }
 }

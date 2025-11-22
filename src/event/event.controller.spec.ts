@@ -93,7 +93,7 @@ describe('EventController (e2e)', () => {
         { provide: CloudinaryService, useValue: mockCloudinaryService },
       ],
     })
-      .overrideGuard('JwtGuard')
+      .overrideGuard('SessionGuard')
       .useValue({
         canActivate: jest.fn((context) => {
           const request = context.switchToHttp().getRequest();
