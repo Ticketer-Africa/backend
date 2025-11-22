@@ -22,7 +22,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { Role } from '../common/enums/role.enum';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { JwtGuard } from '../auth/guards/jwt.guard';
+import { SessionGuard } from '../auth/guards/session.guard';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ToggleEventStatusDto } from './dto/toggle-status.dto';
 import {
@@ -123,7 +123,7 @@ export class EventController {
     return this.eventService.getSingleEvent(id);
   }
 
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Post('create')
   @HttpCode(201)
   @Roles(Role.ORGANIZER)
@@ -219,7 +219,7 @@ export class EventController {
     return this.eventService.createEvent(dto, user.sub, file);
   }
 
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Get('user/my')
   @HttpCode(200)
   @ApiOperation({
@@ -237,7 +237,7 @@ export class EventController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   getMyAttendedEvents(@Req() req) {
-    return this.eventService.getUserEvents(req.user.sub);
+    return this.eventService.getUserEvents(req.user.id);
   }
 
   @Get('upcoming')
@@ -272,7 +272,7 @@ export class EventController {
     return this.eventService.getPastEvents();
   }
 
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Get('organizer/my')
   @HttpCode(200)
   @Roles(Role.ORGANIZER)
@@ -295,9 +295,9 @@ export class EventController {
     description: 'Unauthorized: JWT token missing or invalid',
   })
   getOrganizerEvents(@Req() req) {
-    return this.eventService.getOrganizerEvents(req.user.sub);
+    return this.eventService.getOrganizerEvents(req.user.id);
   }
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Patch(':id')
   @Roles(Role.ORGANIZER)
   @UseInterceptors(FileInterceptor('file'))
@@ -395,10 +395,10 @@ export class EventController {
     // Transform into DTO so class-validator can run properly
     const dto = plainToInstance(UpdateEventDto, body);
 
-    return this.eventService.updateEvent(id, dto, req.user.sub, file);
+    return this.eventService.updateEvent(id, dto, req.user.id, file);
   }
 
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Delete(':id')
   @Roles(Role.ORGANIZER)
   @ApiOperation({
@@ -424,10 +424,10 @@ export class EventController {
   @ApiResponse({ status: 404, description: 'Event not found' })
   @ApiResponse({ status: 400, description: 'Bad Request: Invalid UUID' })
   delete(@Param('id') id: string, @Req() req) {
-    return this.eventService.deleteEvent(id, req.user.sub);
+    return this.eventService.deleteEvent(id, req.user.id);
   }
 
-  @UseGuards(JwtGuard, RolesGuard)
+  @UseGuards(SessionGuard, RolesGuard)
   @Patch(':id/toggle')
   @Roles(Role.ORGANIZER)
   @ApiOperation({
@@ -461,6 +461,6 @@ export class EventController {
     @Body() dto: ToggleEventStatusDto,
     @Req() req,
   ) {
-    return this.eventService.toggleEventStatus(id, dto.isActive, req.user.sub);
+    return this.eventService.toggleEventStatus(id, dto.isActive, req.user.id);
   }
 }

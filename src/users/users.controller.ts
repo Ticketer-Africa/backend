@@ -12,7 +12,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UserService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { JwtGuard } from 'src/auth/guards/jwt.guard';
+import { SessionGuard } from 'src/auth/guards/session.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -28,7 +28,7 @@ export class UserController {
   constructor(private userService: UserService) {}
 
   @Get('me')
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get authenticated user',
@@ -71,11 +71,12 @@ export class UserController {
   })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getCurrentUser(@Req() req) {
-    return this.userService.getCurrentUser(req.user.sub);
+    console.log(req);
+    return this.userService.getCurrentUser(req.user.id);
   }
 
   @Put('update')
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @UseInterceptors(FileInterceptor('file'))
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
@@ -128,7 +129,7 @@ export class UserController {
     @UploadedFile() file: Express.Multer.File,
     @Req() req,
   ) {
-    return this.userService.updateUser(req.user.sub, dto, file);
+    return this.userService.updateUser(req.user.id, dto, file);
   }
 
   @Patch('become-organizer')

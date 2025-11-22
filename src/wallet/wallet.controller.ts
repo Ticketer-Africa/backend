@@ -10,12 +10,12 @@ import {
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtGuard } from 'src/auth/guards/jwt.guard';
+import { SessionGuard } from 'src/auth/guards/session.guard';
 import { SetWalletPinDto } from './dto/set-wallet-pin.dto';
 
 @ApiTags('Wallet')
 @ApiBearerAuth()
-@UseGuards(JwtGuard)
+@UseGuards(SessionGuard)
 @Controller('v1/wallet')
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
@@ -23,13 +23,13 @@ export class WalletController {
   @Get('balance')
   @ApiOperation({ summary: 'Get wallet balance of authenticated user' })
   async getBalance(@Req() req) {
-    return this.walletService.checkBalance(req.user.sub);
+    return this.walletService.checkBalance(req.user.id);
   }
 
   @Get('transactions')
   @ApiOperation({ summary: 'Get transaction history of authenticated user' })
   async getTransactionHistory(@Req() req) {
-    return this.walletService.getTransactions(req.user.sub);
+    return this.walletService.getTransactions(req.user.id);
   }
 
   @Post('withdraw')
@@ -53,13 +53,13 @@ export class WalletController {
     },
   })
   async withdraw(@Body() body, @Req() req) {
-    return this.walletService.withdraw(req.user.sub, body);
+    return this.walletService.withdraw(req.user.id, body);
   }
 
   @Patch('pin')
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   async setWalletPin(@Req() req, @Body() dto: SetWalletPinDto) {
-    return this.walletService.setWalletPin(req.user.sub, dto);
+    return this.walletService.setWalletPin(req.user.id, dto);
   }
 
   @Get('pin-status')
@@ -67,6 +67,6 @@ export class WalletController {
     summary: 'Check if wallet PIN is set for authenticated user',
   })
   async hasWalletPin(@Req() req) {
-    return this.walletService.hasWalletPin(req.user.sub);
+    return this.walletService.hasWalletPin(req.user.id);
   }
 }

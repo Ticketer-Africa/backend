@@ -8,7 +8,7 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtGuard } from '../auth/guards/jwt.guard';
+import { SessionGuard } from '../auth/guards/session.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
@@ -17,7 +17,7 @@ import { AdminService } from './admin.service';
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('v1/admin')
-@UseGuards(JwtGuard, RolesGuard)
+@UseGuards(SessionGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPERADMIN)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}

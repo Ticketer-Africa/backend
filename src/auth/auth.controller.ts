@@ -5,6 +5,7 @@ import {
   HttpCode,
   Req,
   UseGuards,
+  Get,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -16,12 +17,18 @@ import { ResendOtpDto } from './dto/resend-otp.dto';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { JwtGuard } from './guards/jwt.guard';
+import { SessionGuard } from './guards/session.guard';
 
 @ApiTags('Authentication')
 @Controller('v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @UseGuards(SessionGuard)
+  @Get('me')
+  me(@Req() req) {
+    return this.authService.getCurrentUser(req.user.id);
+  }
 
   @Post('register')
   @HttpCode(201)
@@ -103,8 +110,8 @@ export class AuthController {
     status: 400,
     description: 'Invalid password or email not verified',
   })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Req() req, @Body() dto: LoginDto) {
+    return this.authService.login(req, dto);
   }
 
   @Post('resend-otp')
@@ -268,7 +275,7 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
-  @UseGuards(JwtGuard)
+  @UseGuards(SessionGuard)
   @Post('change-password')
   @HttpCode(200)
   @Throttle({ default: { limit: 2, ttl: 60000 } })
@@ -305,7 +312,13 @@ export class AuthController {
   })
   @ApiResponse({ status: 404, description: 'User not found' })
   async changePassword(@Body() dto: ChangePasswordDto, @Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.id;
     return this.authService.changePassword(userId, dto);
+  }
+
+  @Post('logout')
+  logout(@Req() req) {
+    req.session.destroy(() => {});
+    return { message: 'Logged out successfully' };
   }
 }
