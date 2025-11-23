@@ -4,51 +4,38 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { setupSession } from './session.config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Enable CORS with dynamic origin
+  app.set('trust proxy', 1);
+
   const allowedOrigins = [
     'http://localhost:3000',
     'https://ticketer-app-staging.vercel.app',
-    'https://github.com/Ticketer Africa-Africa/backend.git',
     'https://frontend-git-staging-ticketer-africas-projects.vercel.app',
     'https://www.ticketer.africa',
   ];
+
+  // Simplified CORS setup
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, origin || '*'); // Return the request's origin or '*' if no origin
+      // Allow requests with no origin (like mobile apps, Postman, or same-origin)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
       }
     },
+    credentials: true, // This is critical for cookies
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization,X-Requested-With,x-client-page',
-    credentials: true,
-  });
-
-  // Explicitly handle OPTIONS requests (optional, for robustness)
-  app.use((req, res, next) => {
-    if (req.method === 'OPTIONS') {
-      const origin = req.headers.origin;
-      if (!origin || allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
-        res.setHeader(
-          'Access-Control-Allow-Methods',
-          'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-        );
-        res.setHeader(
-          'Access-Control-Allow-Headers',
-          'Content-Type,Authorization,X-Requested-With,x-client-page',
-        );
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        res.status(204).send();
-        return;
-      }
-    }
-    next();
+    exposedHeaders: ['set-cookie'], // Expose set-cookie header
   });
 
   app.use(cookieParser());

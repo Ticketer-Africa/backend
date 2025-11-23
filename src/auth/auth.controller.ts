@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-promise-reject-errors */
 import {
   Controller,
   Post,
@@ -6,6 +7,7 @@ import {
   Req,
   UseGuards,
   Get,
+  Res,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -110,8 +112,36 @@ export class AuthController {
     status: 400,
     description: 'Invalid password or email not verified',
   })
-  async login(@Req() req, @Body() dto: LoginDto) {
-    return this.authService.login(req, dto);
+  async login(@Req() req, @Res() res, @Body() dto: LoginDto) {
+    // Perform login logic
+    const result = await this.authService.login(req, dto);
+
+    // Force session save and wait for it
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          reject(err);
+        } else {
+          console.log('✅ Session saved successfully');
+          resolve();
+        }
+      });
+    });
+
+    // Log debug info
+    console.log('🔐 Login Debug Info:');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('Session ID:', req.sessionID);
+    console.log('Session cookie config:', req.session.cookie);
+
+    // Send response first
+    res.json(result);
+
+    // Check Set-Cookie header AFTER response is sent (in next tick)
+    process.nextTick(() => {
+      console.log('Set-Cookie header:', res.getHeader('set-cookie'));
+    });
   }
 
   @Post('resend-otp')
