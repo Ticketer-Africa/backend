@@ -20,6 +20,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SessionGuard } from './guards/session.guard';
+import { Response } from 'express';
 
 @ApiTags('Authentication')
 @Controller('v1/auth')
@@ -28,7 +29,8 @@ export class AuthController {
 
   @UseGuards(SessionGuard)
   @Get('me')
-  me(@Req() req) {
+  me(@Req() req, @Res() res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
     return this.authService.getCurrentUser(req.user.id);
   }
 
