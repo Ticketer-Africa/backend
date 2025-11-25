@@ -20,6 +20,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SessionGuard } from './guards/session.guard';
+import { Response } from 'express';
 
 @ApiTags('Authentication')
 @Controller('v1/auth')
