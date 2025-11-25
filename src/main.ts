@@ -16,6 +16,7 @@ async function bootstrap() {
     'https://ticketer-app-staging.vercel.app',
     'https://frontend-git-staging-ticketer-africas-projects.vercel.app',
     'https://www.ticketer.africa',
+    process.env.FRONTEND_URL,
   ];
 
   // Simplified CORS setup
