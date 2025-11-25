@@ -58,7 +58,7 @@ export async function setupSession(app: INestApplication) {
         sameSite: isProduction ? 'none' : 'lax',
         maxAge: 1000 * 60 * 60 * 24 * 30,
         // Add domain only if backend and frontend are on same parent domain
-        // domain: isProduction ? '.ticketer.africa' : undefined,
+        domain: isProduction ? '.ticketer.africa' : undefined,
       },
     }),
   );
