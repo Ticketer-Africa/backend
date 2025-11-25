@@ -29,8 +29,7 @@ export class AuthController {
 
   @UseGuards(SessionGuard)
   @Get('me')
-  me(@Req() req, @Res() res: Response) {
-    res.setHeader('Cache-Control', 'no-store');
+  me(@Req() req) {
     return this.authService.getCurrentUser(req.user.id);
   }
 
