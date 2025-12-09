@@ -393,11 +393,15 @@ export class TicketService {
       );
     }
 
-    const totalAmount =
-      ticketCategories.reduce(
-        (sum, category) => sum + category.price * category.quantity,
-        0,
-      ) + event.primaryFeeBps;
+    const baseAmount = ticketCategories.reduce(
+      (sum, category) => sum + category.price * category.quantity,
+      0,
+    );
+
+    const feeAmount = Math.floor((baseAmount * event.primaryFeeBps) / 10000);
+
+    const totalAmount = baseAmount + feeAmount;
+
     const reference = `txn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const ticketIds = await this.createTicketsForCategories(

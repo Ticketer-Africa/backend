@@ -6,7 +6,6 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { Role } from '../../generated/prisma';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.test' });
@@ -139,7 +138,7 @@ describe('EventController (e2e)', () => {
       mockPrismaService.event.create.mockResolvedValue({
         id: 'event-id-1',
         ...createEventDto,
-        organizerId: mockUser.sub,
+        organizerId: mockUser.id,
         isActive: true,
         bannerUrl: 'https://cloudinary.com/image.jpg',
       });
@@ -170,7 +169,7 @@ describe('EventController (e2e)', () => {
           price: createEventDto.price,
           maxTickets: createEventDto.maxTickets,
           date: expect.any(String),
-          organizerId: mockUser.sub,
+          organizerId: mockUser.id,
           bannerUrl: 'https://cloudinary.com/image.jpg',
           isActive: true,
         }),
@@ -181,7 +180,7 @@ describe('EventController (e2e)', () => {
       mockPrismaService.event.create.mockResolvedValue({
         id: 'event-id-1',
         ...createEventDto,
-        organizerId: mockUser.sub,
+        organizerId: mockUser.id,
         isActive: true,
       });
 
@@ -250,7 +249,7 @@ describe('EventController (e2e)', () => {
     it('should update an event successfully with file upload', async () => {
       mockPrismaService.event.findUnique.mockResolvedValue({
         id: eventId,
-        organizerId: mockUser.sub,
+        organizerId: mockUser.id,
         name: 'Old Festival',
         price: 50,
         maxTickets: 100,
@@ -263,7 +262,7 @@ describe('EventController (e2e)', () => {
       mockPrismaService.event.update.mockResolvedValue({
         id: eventId,
         ...updateEventDto,
-        organizerId: mockUser.sub,
+        organizerId: mockUser.id,
       });
 
       const response = await request(app.getHttpServer())
@@ -338,7 +337,7 @@ describe('EventController (e2e)', () => {
     it('should toggle event status successfully', async () => {
       mockPrismaService.event.findUnique.mockResolvedValue({
         id: eventId,
-        organizerId: mockUser.sub,
+        organizerId: mockUser.id,
         isActive: true,
       });
       mockPrismaService.event.update.mockResolvedValue({
@@ -463,7 +462,7 @@ describe('EventController (e2e)', () => {
   describe('GET /v1/events/organizer/my', () => {
     it('should get organizer events', async () => {
       const mockEvents = [
-        { id: 'event-id-1', name: 'Event 1', organizerId: mockUser.sub },
+        { id: 'event-id-1', name: 'Event 1', organizerId: mockUser.id },
       ];
       mockPrismaService.event.findMany.mockResolvedValue(mockEvents);
 
@@ -474,7 +473,7 @@ describe('EventController (e2e)', () => {
 
       expect(response.body).toEqual(mockEvents);
       expect(mockPrismaService.event.findMany).toHaveBeenCalledWith({
-        where: { organizerId: mockUser.sub },
+        where: { organizerId: mockUser.id },
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -499,12 +498,12 @@ describe('EventController (e2e)', () => {
         {
           eventId: 'event-id-1',
           event: { id: 'event-id-1', name: 'Event 1' },
-          userId: mockUser.sub,
+          userId: mockUser.id,
         },
         {
           eventId: 'event-id-1',
           event: { id: 'event-id-1', name: 'Event 1' },
-          userId: mockUser.sub,
+          userId: mockUser.id,
         },
       ];
       mockPrismaService.ticket.findMany.mockResolvedValue(mockTickets);
