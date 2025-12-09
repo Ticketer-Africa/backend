@@ -398,7 +398,9 @@ export class TicketService {
       0,
     );
 
-    const feeAmount = Math.floor((baseAmount * event.primaryFeeBps) / 10000);
+    const feeAmount = Math.floor(
+      (baseAmount * (event.primaryFeeBps + 150)) / 10000,
+    );
 
     const totalAmount = baseAmount + feeAmount;
 
