@@ -36,6 +36,7 @@ export class TicketService {
         slug: true,
         date: true,
         organizerId: true,
+        primaryFeeBps: true,
         ticketCategories: true,
       },
     });
@@ -392,10 +393,11 @@ export class TicketService {
       );
     }
 
-    const totalAmount = ticketCategories.reduce(
-      (sum, category) => sum + category.price * category.quantity,
-      0,
-    );
+    const totalAmount =
+      ticketCategories.reduce(
+        (sum, category) => sum + category.price * category.quantity,
+        0,
+      ) + event.primaryFeeBps;
     const reference = `txn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const ticketIds = await this.createTicketsForCategories(
