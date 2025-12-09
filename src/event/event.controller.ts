@@ -216,7 +216,7 @@ export class EventController {
     // Transform into DTO instance so class-validator runs properly
     const dto = plainToInstance(CreateEventDto, body);
 
-    return this.eventService.createEvent(dto, user.sub, file);
+    return this.eventService.createEvent(dto, user.id, file);
   }
 
   @UseGuards(SessionGuard, RolesGuard)

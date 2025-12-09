@@ -59,6 +59,7 @@ export class EventService {
   private async findEventBySlug(slug: string) {
     const cacheKey = `ticketer:event:slug:${slug}`;
     const cachedEvent = await this.redis.get(cacheKey);
+
     if (cachedEvent) {
       this.logger.log(`Cache hit for event slug: ${slug}`);
       return cachedEvent;
@@ -77,15 +78,35 @@ export class EventService {
         category: true,
         isActive: true,
         bannerUrl: true,
+
+        primaryFeeBps: true,
+
         ticketCategories: true,
-        organizer: { select: { name: true, email: true, profileImage: true } },
+
+        organizer: {
+          select: {
+            name: true,
+            email: true,
+            profileImage: true,
+          },
+        },
       },
     });
+
     if (!event) throw new NotFoundException('Event not found');
 
-    await this.redis.set(cacheKey, event, 900); // Cache for 15 minutes
+    // Expose primaryFee instead of primaryFeeBps
+    const { primaryFeeBps, ...eventWithoutFee } = event;
+    const transformed = {
+      ...eventWithoutFee,
+      primaryFee: primaryFeeBps, // rename it
+    };
+
+    await this.redis.set(cacheKey, transformed, 900); // Cache for 15 mins
+
     this.logger.log(`Cached event slug: ${slug}`);
-    return event;
+
+    return transformed;
   }
 
   private validateOwnership(event: any, userId: string) {
